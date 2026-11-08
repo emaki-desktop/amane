@@ -132,6 +132,9 @@ fn decode(key: Key) {
         .insert(key, Some(Arc::new(image)));
 
     changes::mark(TypeId::of::<Decoded>());
+
+    // the decoder's buffers were freed on this thread's pool
+    crate::allocator::trim_soon();
 }
 
 /*
@@ -141,11 +144,16 @@ fn decode(key: Key) {
 pub fn forget(image: &Arc<Bitmap>) {
     let mut loaded = LOADED.lock().unwrap_or_else(PoisonError::into_inner);
 
+    let before = loaded.len();
     loaded.retain(|(_, cover, _), kept| {
         let same = kept.as_ref().is_some_and(|kept| Arc::ptr_eq(kept, image));
 
         cover.is_some() || !same
     });
+
+    if loaded.len() != before {
+        crate::allocator::trim_soon();
+    }
 }
 
 // none for a file that can't be read or decoded, like one still being written

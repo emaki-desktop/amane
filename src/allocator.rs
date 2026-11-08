@@ -1,4 +1,5 @@
 use std::ffi::c_int;
+use std::sync::{Condvar, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -10,8 +11,12 @@ const ONE_MEGABYTE: c_int = 1024 * 1024;
 
 const POOLS: c_int = 2;
 
-// how often freed memory inside the pools is handed back
-const TRIM: Duration = Duration::from_secs(10);
+// how long after a big release the pools are trimmed, so a burst of releases trims once
+const SETTLE: Duration = Duration::from_secs(2);
+
+// set by `trim_soon`, taken by the trimming thread
+static ASKED: Mutex<bool> = Mutex::new(false);
+static WAKE: Condvar = Condvar::new();
 
 unsafe extern "C" {
     fn mallopt(param: c_int, value: c_int) -> c_int;
@@ -36,17 +41,34 @@ pub fn limit() {
         "failed to set the allocator's limits"
     );
 
-    thread::spawn(trim);
+    let _ = thread::Builder::new()
+        .name(String::from("amane-trim"))
+        .spawn(trim);
 }
 
 /*
  * a pool only shrinks from its end, so the gaps decoding, d-bus and niri's
- * events leave in the middle stay with the process; trimming gives them back
+ * events leave in the middle stay with the process; trimming gives them back.
+ * it runs once after something big let go (a window hiding, images forgotten),
+ * not on a clock, so an idle process never wakes for it
  */
-// a fixed timer; if it ever shows up in frame times, trim after a window closes instead
+pub(crate) fn trim_soon() {
+    *ASKED.lock().unwrap_or_else(PoisonError::into_inner) = true;
+    WAKE.notify_one();
+}
+
 fn trim() {
     loop {
-        thread::sleep(TRIM);
+        let mut asked = ASKED.lock().unwrap_or_else(PoisonError::into_inner);
+        while !*asked {
+            asked = WAKE.wait(asked).unwrap_or_else(PoisonError::into_inner);
+        }
+        *asked = false;
+        drop(asked);
+
+        // what's freed right after the ask (the rest of the hide) goes in the same trim
+        thread::sleep(SETTLE);
+        *ASKED.lock().unwrap_or_else(PoisonError::into_inner) = false;
 
         unsafe { malloc_trim(0) };
     }

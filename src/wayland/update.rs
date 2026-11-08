@@ -295,6 +295,9 @@ impl OpenWindow {
         self.gpu.release();
         self.vibrant_layers = None;
 
+        // the freed canvas and decode buffers go back to the system, not just to the pools
+        crate::allocator::trim_soon();
+
         // nothing is drawn until showing the window brings a new configure
         self.width = 0;
         self.height = 0;
