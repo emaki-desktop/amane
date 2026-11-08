@@ -18,6 +18,7 @@ mod listen;
 
 use events::*;
 pub(crate) use ipc::{hdr_panel, set_sdr_white};
+pub(crate) use listen::gesture_wants;
 pub use listen::{
     act, listen_casts, listen_gestures, listen_keyboard_layouts, listen_lock_keys,
     listen_outputs_changed, listen_windows,
@@ -170,28 +171,32 @@ pub fn focus_workspace(id: i64) {
     let _ = BufReader::new(stream).read_line(&mut reply);
 }
 
-// follows niri's events until niri exits, handing over the full list after each one
+// follows niri's events until niri exits, handing over the full list after each one that
+// changed it: a title or focus change leaves the workspaces as they were and wakes nobody
 pub fn listen(mut on_change: impl FnMut(Vec<Workspace>)) {
     let mut state = State::default();
+    let mut last: Option<Vec<Workspace>> = None;
 
-    for event in stream::subscribe() {
-        // windows move in the layout on every frame of a resize, and no
-        // workspace changes for it; nor for the lock keys, outputs or casts
-        if matches!(
+    // what moves a workspace, or a window between workspaces
+    let wants: stream::Wants = |event| {
+        matches!(
             event,
-            Event::WindowLayouts(_)
-                | Event::LockKeys { .. }
-                | Event::OutputsChanged
-                | Event::ConfigLoaded { .. }
-                | Event::Casts(_)
-                | Event::CastChanged(_)
-                | Event::CastStopped { .. }
-        ) {
-            continue;
-        }
+            Event::Workspaces(_)
+                | Event::Activated { .. }
+                | Event::Urgent { .. }
+                | Event::Windows(_)
+                | Event::WindowChanged(_)
+                | Event::WindowClosed { .. }
+        )
+    };
 
+    for event in stream::subscribe(wants) {
         state.apply(event);
 
+        if last.as_ref() == Some(&state.list) {
+            continue;
+        }
+        last = Some(state.list.clone());
         on_change(state.list.clone());
     }
 }

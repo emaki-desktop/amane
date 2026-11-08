@@ -33,7 +33,7 @@ impl Service for Gestures {
 
     // on an unsupported compositor this returns at once and the values stay put
     fn listen() {
-        compositor::listen_gestures(|gesture| {
+        compositor::listen_gestures(compositor::GestureValues::Movement, |gesture| {
             let mut gestures = Self::write();
 
             // niri already coalesces, so a delivered snapshot is normally a

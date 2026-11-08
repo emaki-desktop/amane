@@ -26,7 +26,7 @@ impl Service for WorkspaceSwitch {
 
     // on an unsupported compositor this returns at once and the values stay put
     fn listen() {
-        compositor::listen_gestures(|gesture| {
+        compositor::listen_gestures(compositor::GestureValues::WorkspaceSwitch, |gesture| {
             let mut switch = Self::write();
 
             // the stream also carries the overview and view movement, which leave

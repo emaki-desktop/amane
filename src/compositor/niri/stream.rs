@@ -1,8 +1,9 @@
 #![warn(clippy::unwrap_used, clippy::dbg_macro, clippy::todo, missing_docs)]
 
 //! One connection to niri's event stream for the whole program. Each listener gets the events
-//! from it through a channel of its own, instead of opening its own connection and parsing
-//! every line again. A listener that starts late first gets the state so far, as niri sends a
+//! it asked for through a channel of its own, instead of opening its own connection and parsing
+//! every line again. An event no listener wants wakes none of them: a terminal's title spinner
+//! wakes the windows listener alone, and a swipe's progress only the gesture listeners. A listener that starts late first gets the state so far, as niri sends a
 //! new connection: the workspaces, the windows, the overview and the gesture values, each once
 //! niri has sent it.
 
@@ -29,14 +30,22 @@ struct Hub {
     // niri closed the stream, or wasn't there to open it
     ended: bool,
 
-    listeners: Vec<Sender<Event>>,
+    listeners: Vec<Listener>,
 
     mirror: Option<Mirror>,
 }
 
-/// The events of niri's stream from now on, after the state so far. The channel closes when
-/// niri closes the stream, or at once when niri isn't running.
-pub(super) fn subscribe() -> Receiver<Event> {
+/// Which events a listener is sent.
+pub(super) type Wants = fn(&Event) -> bool;
+
+struct Listener {
+    sender: Sender<Event>,
+    wants: Wants,
+}
+
+/// The events of niri's stream that `wants` takes, from now on, after the state so far. The
+/// channel closes when niri closes the stream, or at once when niri isn't running.
+pub(super) fn subscribe(wants: Wants) -> Receiver<Event> {
     let (sender, receiver) = mpsc::channel();
     let mut hub = HUB.lock().unwrap_or_else(PoisonError::into_inner);
 
@@ -60,9 +69,11 @@ pub(super) fn subscribe() -> Receiver<Event> {
     }
 
     for event in hub.mirror.get_or_insert_with(Mirror::default).replay() {
-        let _ = sender.send(event);
+        if wants(&event) {
+            let _ = sender.send(event);
+        }
     }
-    hub.listeners.push(sender);
+    hub.listeners.push(Listener { sender, wants });
 
     receiver
 }
@@ -78,9 +89,10 @@ fn read(stream: UnixStream) {
 
         let mut hub = HUB.lock().unwrap_or_else(PoisonError::into_inner);
         hub.mirror.get_or_insert_with(Mirror::default).apply(&event);
-        // a listener that stopped listening drops out
-        hub.listeners
-            .retain(|listener| listener.send(event.clone()).is_ok());
+        // a listener that stopped listening drops out at the next event it wants
+        hub.listeners.retain(|listener| {
+            !(listener.wants)(&event) || listener.sender.send(event.clone()).is_ok()
+        });
     }
 
     let mut hub = HUB.lock().unwrap_or_else(PoisonError::into_inner);

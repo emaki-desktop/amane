@@ -174,13 +174,26 @@ pub(crate) fn listen_casts(on_change: impl FnMut(Vec<niri::client::Cast>)) {
     }
 }
 
-pub(crate) fn listen_gestures(on_change: impl FnMut(Gesture)) {
+/// Which of the gesture values a listener follows; it is woken only for those.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum GestureValues {
+    /// The overview's progress, the view offset and the workspace switch.
+    Movement,
+    /// The overview's progress alone.
+    Overview,
+    /// The workspace switch alone.
+    WorkspaceSwitch,
+    /// Whether each output's desktop is obscured.
+    Obscured,
+}
+
+pub(crate) fn listen_gestures(values: GestureValues, on_change: impl FnMut(Gesture)) {
     let Some(compositor) = running() else {
         return;
     };
 
     match compositor {
-        Compositor::Niri => niri::listen_gestures(on_change),
+        Compositor::Niri => niri::listen_gestures(niri::gesture_wants(values), on_change),
         Compositor::Hyprland | Compositor::Sway | Compositor::Mango => {}
     }
 }

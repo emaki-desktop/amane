@@ -481,7 +481,8 @@ pub fn set_output_mode(output: &str, mode: Mode) -> Result<(), NiriError> {
 /// changed nothing), until niri exits. It blocks, so run it on a thread of its own. Changes made
 /// with [`set_output`] are lost at each read, so this is where to make them again.
 pub fn follow_config_loads(mut on_load: impl FnMut(bool)) {
-    for event in super::stream::subscribe() {
+    let wants: super::stream::Wants = |event| matches!(event, super::Event::ConfigLoaded { .. });
+    for event in super::stream::subscribe(wants) {
         if let super::Event::ConfigLoaded { failed } = event {
             on_load(failed);
         }

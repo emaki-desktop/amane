@@ -25,7 +25,7 @@ impl Service for Desktop {
 
     // on an unsupported compositor this returns at once and nothing is obscured
     fn listen() {
-        compositor::listen_gestures(|gesture| {
+        compositor::listen_gestures(compositor::GestureValues::Obscured, |gesture| {
             let mut desktop = Self::write();
 
             // the stream also carries the gestures, which leave the desktop as it was

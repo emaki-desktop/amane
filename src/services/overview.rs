@@ -20,7 +20,7 @@ impl Service for Overview {
 
     // on an unsupported compositor this returns at once and the value stays put
     fn listen() {
-        compositor::listen_gestures(|gesture| {
+        compositor::listen_gestures(compositor::GestureValues::Overview, |gesture| {
             let mut overview = Self::write();
 
             // the stream also carries view and workspace movement, which

@@ -16,9 +16,7 @@ pub fn listen_windows(mut on_change: impl FnMut(Vec<WindowInfo>, bool)) {
     let mut windows: HashMap<u64, WindowInfo> = HashMap::new();
     let mut overview = false;
 
-    for event in stream::subscribe() {
-        // only emit on events the bar reads (windows or overview); plain
-        // workspace events on the same stream change nothing here
+    for event in stream::subscribe(wants_window) {
         if apply_window(&mut windows, &mut overview, event) {
             let mut list: Vec<WindowInfo> = windows.values().cloned().collect();
 
@@ -27,6 +25,19 @@ pub fn listen_windows(mut on_change: impl FnMut(Vec<WindowInfo>, bool)) {
             on_change(list, overview);
         }
     }
+}
+
+// the events `apply_window` reads
+fn wants_window(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Overview { .. }
+            | Event::Windows(_)
+            | Event::WindowChanged(_)
+            | Event::WindowClosed { .. }
+            | Event::WindowLayouts(_)
+            | Event::WindowFocus { .. }
+    )
 }
 
 // true when the event changed something the caller shows, so it should emit
@@ -92,15 +103,32 @@ pub(super) fn apply_window(
     }
 }
 
+// the gesture events behind `values`
+pub(crate) fn gesture_wants(values: crate::compositor::GestureValues) -> stream::Wants {
+    use crate::compositor::GestureValues;
+
+    match values {
+        GestureValues::Movement => |event| {
+            matches!(
+                event,
+                Event::OverviewProgress { .. }
+                    | Event::ViewOffset { .. }
+                    | Event::WorkspaceSwitch { .. }
+            )
+        },
+        GestureValues::Overview => |event| matches!(event, Event::OverviewProgress { .. }),
+        GestureValues::WorkspaceSwitch => |event| matches!(event, Event::WorkspaceSwitch { .. }),
+        GestureValues::Obscured => |event| matches!(event, Event::DesktopObscured { .. }),
+    }
+}
+
 // follows the same event stream, but hands over the live gesture values
-// (overview progress, view offset, workspace-switch progress) after each
-// gesture event
-pub fn listen_gestures(mut on_change: impl FnMut(Gesture)) {
+// (overview progress, view offset, workspace-switch progress, desktop obscured) after each
+// gesture event `wants` takes, so a listener of one value isn't woken for the others
+pub fn listen_gestures(wants: stream::Wants, mut on_change: impl FnMut(Gesture)) {
     let mut gesture = Gesture::default();
 
-    for event in stream::subscribe() {
-        // only the gesture events (and DesktopObscured) move anything here; every
-        // other event on the shared stream is ignored
+    for event in stream::subscribe(wants) {
         if apply_gesture(&mut gesture, event) {
             on_change(gesture.clone());
         }
@@ -111,7 +139,13 @@ pub fn listen_gestures(mut on_change: impl FnMut(Gesture)) {
 pub fn listen_keyboard_layouts(mut on_change: impl FnMut(Vec<String>, u8)) {
     let mut names = Vec::new();
 
-    for event in stream::subscribe() {
+    let wants: stream::Wants = |event| {
+        matches!(
+            event,
+            Event::KeyboardLayouts { .. } | Event::KeyboardLayoutSwitched { .. }
+        )
+    };
+    for event in stream::subscribe(wants) {
         match event {
             Event::KeyboardLayouts {
                 names: list,
@@ -128,7 +162,7 @@ pub fn listen_keyboard_layouts(mut on_change: impl FnMut(Vec<String>, u8)) {
 
 // follows the same event stream for Caps Lock and Num Lock (the niri fork)
 pub fn listen_lock_keys(mut on_change: impl FnMut(bool, bool)) {
-    for event in stream::subscribe() {
+    for event in stream::subscribe(|event| matches!(event, Event::LockKeys { .. })) {
         if let Event::LockKeys {
             caps_lock,
             num_lock,
@@ -141,7 +175,7 @@ pub fn listen_lock_keys(mut on_change: impl FnMut(bool, bool)) {
 
 // calls back after each OutputsChanged (the niri fork)
 pub fn listen_outputs_changed(mut on_change: impl FnMut()) {
-    for event in stream::subscribe() {
+    for event in stream::subscribe(|event| matches!(event, Event::OutputsChanged)) {
         if matches!(event, Event::OutputsChanged) {
             on_change();
         }
@@ -152,7 +186,13 @@ pub fn listen_outputs_changed(mut on_change: impl FnMut()) {
 pub fn listen_casts(mut on_change: impl FnMut(Vec<client::Cast>)) {
     let mut casts: Vec<client::Cast> = Vec::new();
 
-    for event in stream::subscribe() {
+    let wants: stream::Wants = |event| {
+        matches!(
+            event,
+            Event::Casts(_) | Event::CastChanged(_) | Event::CastStopped { .. }
+        )
+    };
+    for event in stream::subscribe(wants) {
         if apply_cast(&mut casts, event) {
             on_change(casts.clone());
         }
@@ -266,4 +306,43 @@ pub fn act(action: Action) {
     let mut reply = String::new();
 
     let _ = BufReader::new(stream).read_line(&mut reply);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compositor::GestureValues;
+
+    fn event(line: &str) -> Event {
+        parse(line).expect("a line amane reads")
+    }
+
+    #[test]
+    fn each_gesture_listener_is_sent_only_its_own_events() {
+        let view = event(
+            r#"{"ViewOffsetChanged":{"output":"eDP-1","view_pos":1.0,"active_column_idx":0}}"#,
+        );
+        let obscured = event(r#"{"DesktopObscured":{"output":"eDP-1","obscured":true}}"#);
+        let progress = event(r#"{"OverviewProgress":{"progress":0.5}}"#);
+
+        assert!(gesture_wants(GestureValues::Movement)(&view));
+        assert!(!gesture_wants(GestureValues::Movement)(&obscured));
+        assert!(gesture_wants(GestureValues::Overview)(&progress));
+        assert!(!gesture_wants(GestureValues::Overview)(&view));
+        assert!(!gesture_wants(GestureValues::WorkspaceSwitch)(&view));
+        assert!(gesture_wants(GestureValues::Obscured)(&obscured));
+    }
+
+    #[test]
+    fn the_windows_listener_is_not_sent_gestures() {
+        let title = event(
+            r#"{"WindowOpenedOrChanged":{"window":{"id":7,"title":"foot","app_id":"foot","workspace_id":3,"is_focused":true,"is_floating":false}}}"#,
+        );
+        let view = event(
+            r#"{"ViewOffsetChanged":{"output":"eDP-1","view_pos":1.0,"active_column_idx":0}}"#,
+        );
+
+        assert!(wants_window(&title));
+        assert!(!wants_window(&view));
+    }
 }
