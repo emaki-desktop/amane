@@ -29,7 +29,7 @@ Upstream's guide is [Bluetooth](../../src/bluetooth.md). Everything it describes
 
 `BluetoothDevice` adds `trusted()`, `blocked()`, `signal()` and `named()`. `named()` is false when BlueZ only has the address. BlueZ then makes the alias from the address with dashes.
 
-A failure is a [`ServiceError`](errors.md): its kind is read from BlueZ's error name, or from the reason in a plain `org.bluez.Error.Failed`, such as `br-connection-page-timeout`, which reads as `Unreachable`, and its message is BlueZ's own. `AlreadyConnected` and `AlreadyExists` count as success. amane keeps no words for a failure and doesn't clear it on a timer: amane-shell words it and shows it for 10 s.
+A failure is a [`ServiceError`](errors.md): its kind is read from BlueZ's error name, or from the reason in a plain `org.bluez.Error.Failed`, such as `br-connection-page-timeout`, which reads as `Unreachable`, and its message is BlueZ's own. `AlreadyConnected` and `AlreadyExists` count as success. amane keeps no words for a failure and doesn't clear it on a timer: emaki words it and shows it for 10 s.
 
 ## Actions
 

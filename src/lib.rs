@@ -1,8 +1,8 @@
-//! amane, a Rust Wayland shell library: the `ocbk` fork for amane-shell.
+//! amane, a Rust Wayland shell library: the `emaki` branch, the fork the emaki desktop is built on.
 //!
 //! The fork adds popups, niri compositor services, app windows, blur shapes,
 //! parley text and more system services. Each is documented in
-//! [`docs/fork/README.md`](https://github.com/098765434/amane/blob/ocbk/docs/fork/README.md).
+//! [`docs/fork/README.md`](https://github.com/emaki-desktop/amane/blob/emaki/docs/fork/README.md).
 
 #[cfg(target_env = "gnu")] // skip glibc tuning if there is no glibc
 mod allocator;

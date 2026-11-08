@@ -3,8 +3,8 @@
 What the fork changes in how amane works inside, as additions to upstream's
 [ARCHITECTURE.md](../../../ARCHITECTURE.md). Each section names the upstream section it extends.
 What this means for the code a shell writes (scoped redraws, quiet services, animations made
-once, what opacity costs on the GPU) is in amane-shell's
-[performance guide](https://github.com/098765434/amane-shell/blob/main/docs/development/performance.md).
+once, what opacity costs on the GPU) is in emaki's
+[performance guide](https://github.com/emaki-desktop/emaki/blob/main/docs/developer/performance.md).
 
 ## Start-up: one copy per app-id
 

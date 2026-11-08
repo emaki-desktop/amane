@@ -82,7 +82,7 @@ Example: `examples/input_method.rs`. Run it beside the shell, then focus a field
   `niri-secure-fill-v1`. For each new field (each `generation`), the event loop takes a target,
   the compositor's snapshot of that field and its owner. A fill goes to that target, and the
   compositor commits it only if the same text input of the same surface still has the keyboard
-  ([niri's doc](https://github.com/098765434/niri/blob/ocbk/docs/fork/input/secure-fill.md)). A
+  ([niri's doc](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/input/secure-fill.md)). A
   target is filled once; it then waits for its answer and a fresh target is taken for the same
   field.
 - **What is kept.** `surrounding_text` is reduced to whether the field is empty, and the text

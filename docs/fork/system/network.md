@@ -32,5 +32,5 @@ beyond Wi-Fi.
 
 Code: `src/services/network.rs`, `src/services/network/{connections,signals}.rs`. Tests: the
 sorting of recorded `PropertiesChanged` signals, and profiles and
-the wired device from recorded `GetSettings` answers, the same profiles as amane-shell's `nmcli`
+the wired device from recorded `GetSettings` answers, the same profiles as emaki's `nmcli`
 fixtures.

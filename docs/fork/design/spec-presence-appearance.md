@@ -4,7 +4,7 @@
 > design history; the current docs are [Idle](../system/idle.md) and
 > [Appearance](../system/appearance.md). The "draft" status line below is the original.
  
-Status: draft · Target: `098765434/amane` (`ocbk`) + `amane-shell` · Group 3 of 3
+Status: draft · Target: `emaki-desktop/amane` (`emaki`) + `emaki` · Group 3 of 3
 (ambient system state the bar *reacts to*: whether the user is present, and the system's
 light/dark + accent preference).
  

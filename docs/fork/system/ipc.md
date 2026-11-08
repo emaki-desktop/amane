@@ -13,7 +13,7 @@ Each app listens on its own socket, named after its app-id ([`App::app_id`](../w
 | App-id | Socket in `$XDG_RUNTIME_DIR` |
 |---|---|
 | `amane`, the default and the shell's | `amane.sock` |
-| `amane-settings`, `emaki`, `emaki-drop` | `amane-settings.sock`, `emaki.sock`, `emaki-drop.sock` |
+| `emaki-settings`, `emaki`, `emaki-drop` | `emaki-settings.sock`, `emaki.sock`, `emaki-drop.sock` |
 | `org.example.Notes`, `code.desktop` | `amane-org.example.Notes.sock`, `amane-code.desktop.sock` |
 
 A plain name (lowercase letters and digits, words joined by `-`) is its own socket, so a family of programs names its sockets itself. Any other id gets the `amane-` prefix, so it can't land on another program's socket.

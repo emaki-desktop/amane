@@ -7,7 +7,7 @@ changes. Each section matches a section there.
 
 | Code | Does |
 |---|---|
-| `.app_id("amane-settings")` | what the compositor and docks know it by, `App::app_id` by default |
+| `.app_id("emaki-settings")` | what the compositor and docks know it by, `App::app_id` by default |
 | `.resizable(true)` | lets the user resize it, `true` by default (upstream: `false`) |
 | `.min_size(w, h)` / `.max_size(w, h)` | limits for the user's resizing |
 | `.maximized(true)` / `.fullscreen(true)` | asks the compositor, again only when the answer changes |

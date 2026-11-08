@@ -16,7 +16,7 @@ use crate::{Service, watch_file};
 pub trait Settings:
     Serialize + DeserializeOwned + Default + PartialEq + Send + Sync + 'static
 {
-    /// The folder in ~/.config, usually the app-id, like "amane-shell".
+    /// The folder in ~/.config, usually the app-id, like "emaki".
     const APP: &'static str;
 
     /// The file's name without .json, like "appearance".

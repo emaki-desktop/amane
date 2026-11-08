@@ -4,11 +4,11 @@
 > over the niri fork's `niri-blur-shapes-v1` in `bcc53ac` and `2ea1d46`
 > ([Blur](../graphics/blur.md)). Part B shipped in `82337f2`: `src/wayland/activation.rs`,
 > `spawn_activated` ([Activation](../windows/activation.md)). §A.6, amane writing its own niri
-> layer rules, was not built as an amane API: amane-shell generates its layer rules instead
-> ([layer rules](https://github.com/098765434/amane-shell/blob/main/docs/integration/layer-rules.md)).
+> layer rules, was not built as an amane API: emaki generates its layer rules instead
+> ([layer rules](https://github.com/emaki-desktop/emaki/blob/main/docs/developer/integration/layer-rules.md)).
 > Kept as design history; the "draft" status line below is the original.
  
-Status: draft · Target: `098765434/amane` (`ocbk`) + `amane-shell` · Two small library
+Status: draft · Target: `emaki-desktop/amane` (`emaki`) + `emaki` · Two small library
 features built on Wayland protocols niri already serves. **No niri changes are required**
 for either (one optional niri nicety in §A.9). On niri, Amane can also write its own layer
 rules into an included config file for smooth blur corners (§A.6).
@@ -283,7 +283,7 @@ niri already blurs popups that request it, defaulting them to non-xray — right
 that open over windows. Lock surfaces are out of scope: niri doesn't support the effect on
 them.
  
-### A.8 Shell usage (`amane-shell`)
+### A.8 Shell usage (`emaki`)
  
 ```rust
 fn bar() -> LayerWindow {
@@ -335,7 +335,7 @@ on config reload, and Amane's `update_capabilities` picks the change up live.
 1. **Unit:** `rounded_strips` never extends outside the ideal rounded rect, leaves no gaps
    or overlaps between strips, and misses at most one pixel per row at each corner — for
    uniform and per-corner radii, at UI scales 1.0 and 1.25. Zero radius gives one rect.
-2. **Protocol:** `WAYLAND_DEBUG=1 amane-shell 2>&1 | grep background_effect` shows one
+2. **Protocol:** `WAYLAND_DEBUG=1 emaki 2>&1 | grep background_effect` shows one
    `get_background_effect` and one `set_blur_region` per window at start, then **nothing**
    while the bar is idle (coalescing). Resizing the bar (output scale change) sends exactly
    one new region.

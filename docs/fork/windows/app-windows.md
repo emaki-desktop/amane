@@ -11,14 +11,14 @@ Related pages: [Popups](popups.md), [Clipboard and Drag and Drop](clipboard.md),
 ```rust,ignore
 Window::new()
     .title("Settings")
-    .app_id("amane-settings")
+    .app_id("emaki-settings")
     .size(480.0, 320.0)
     .min_size(360.0, 240.0)
     .child(...)
 ```
 
 - `title` can change while the window is open, for example to mark unsaved changes.
-- `app_id` is what the compositor, docks and window rules know the app by, like `"amane-settings"`. It's read once, when the window opens. Without it the window takes `App::app_id`, and without that `"amane"`.
+- `app_id` is what the compositor, docks and window rules know the app by, like `"emaki-settings"`. It's read once, when the window opens. Without it the window takes `App::app_id`, and without that `"amane"`.
 - `resizable` is `true` by default (upstream: `false`).
 - `min_size` and `max_size` limit how small or big the user can make it. A tiling compositor may still give a tiled window less.
 
@@ -92,7 +92,7 @@ A normal window doesn't need a bar or the shell. An app that runs next to the sh
 ```rust,ignore
 fn main() {
     App::new()
-        .app_id("amane-settings")
+        .app_id("emaki-settings")
         .normal_window("main", main_window)
         .run();
 }
@@ -208,7 +208,7 @@ The editing model is `src/widgets/text_input/field.rs`, with unit tests. Live-te
 
 | Addition | Notes |
 |---|---|
-| A socket per app-id | `ipc_socket_for(app_id)`: `amane.sock` for the default `"amane"` (the shell, unchanged), `amane-settings.sock`, `amane-<id>.sock` |
+| A socket per app-id | `ipc_socket_for(app_id)`: `amane.sock` for the default `"amane"` (the shell, unchanged), `emaki-settings.sock`, `amane-<id>.sock` |
 | Single instance | `App::run` hands a launch to a running copy (`activate` call: the activation token, then argv) and exits instead of panicking |
 | `App::on_activate(fn(&[String]))` | without it, the app's window comes to the front, or its windows open again when it was kept alive with none |
 | `ipc_call(app_id, name, args)` | the client side, now shared by the CLI; `amane ipc call --app <id>` |
@@ -234,10 +234,10 @@ Not done: the file dialog's parent window (xdg-foreign export), and touch input.
 
 Live-tested on niri: a notification reached the shell's notification server with the right arguments and showed as a toast; the file dialog opened through `xdg-desktop-portal-gnome` with its title and filters, and a file picked in it came back to the callback as its path.
 
-### Phases 8 and 9: in amane-shell (done)
+### Phases 8 and 9: in emaki (done)
 
 - **amane-kit:** the shell's controls, design tokens and theme moved into a workspace crate (now `crates/kit/`). The shell re-exports them under their old paths. New pieces for apps: `Checkbox`, `Radio`, `Dropdown`, `app_window`, `standard_shortcut`, `text_field`/`field_box`, `sidebar`, `Dialog`, and `examples/gallery.rs`.
-- **Shell Settings (`amane-settings`):** an Appearance page (mode, accent, density, text size) that writes `~/.config/amane-shell/appearance.json` through `Config`. The kit's theme reads that file, so the shell follows it live.
+- **Emaki Settings (`emaki-settings`):** an Appearance page (mode, accent, density, text size) that writes `~/.config/emaki/appearance.json` through `Config`. The kit's theme reads that file, so the shell follows it live.
 
 The shell pins an amane rev that has phases 1–7.
 

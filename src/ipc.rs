@@ -81,7 +81,7 @@ pub fn ipc_socket() -> PathBuf {
 
 /*
  * the socket an app with this app-id listens on: a plain lowercase name ("amane", the
- * shell's, "amane-settings", "emaki-drop") is its own socket, <app id>.sock, so a
+ * shell's, "emaki-settings", "emaki-drop") is its own socket, <app id>.sock, so a
  * program family names its sockets itself; any other id (reverse-DNS, a desktop id)
  * gets amane-<app id>.sock, so it can't land on another program's socket
  */
@@ -147,7 +147,7 @@ mod tests {
         let name = |app_id| ipc_socket_for(app_id).file_name().unwrap().to_owned();
 
         assert_eq!(name("amane"), "amane.sock");
-        assert_eq!(name("amane-settings"), "amane-settings.sock");
+        assert_eq!(name("emaki-settings"), "emaki-settings.sock");
         assert_eq!(name("emaki"), "emaki.sock");
         assert_eq!(name("emaki-drop"), "emaki-drop.sock");
         assert_eq!(name("org.example.Notes"), "amane-org.example.Notes.sock");

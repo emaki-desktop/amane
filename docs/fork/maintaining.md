@@ -13,14 +13,14 @@ feature, fork code in files of its own, and as few lines as can be in upstream's
 | Upstream | `https://github.com/MystiaFin/amane` (remote: `upstream`) |
 | Fork point | upstream commit `544cbfc` (tags `fork-base` and `fork-base-2026-11-07`), upstream's `main` of 2026-10-21, taken as the base on 2026-11-07 |
 | Before that | `72e23eb` (tag `fork-base-2026-10-16`), the commit the fork was first written against; that history is kept on `ocbk-pre-tidy` |
-| Fork branch | `ocbk`; the fork's `main` mirrors upstream's `main` (fast-forward it: `git push origin upstream/main:main`) |
-| The delta | `git log --oneline fork-base..ocbk`: 118 commits as of 2026-11-08 (`git rev-list --count fork-base..ocbk`) |
+| Fork branch | `emaki`; the fork's `main` mirrors upstream's `main` (fast-forward it: `git push origin upstream/main:main`) |
+| The delta | `git log --oneline fork-base..emaki`: 118 commits as of 2026-11-08 (`git rev-list --count fork-base..emaki`) |
 
 The fork point is a real upstream commit, so `git log fork-base..HEAD` and `git range-diff` line
-up against genuine upstream history. `ocbk-pre-tidy` stays on origin so the revisions amane-shell
+up against genuine upstream history. `ocbk-pre-tidy` stays on origin so the revisions emaki
 pinned before the rebase can still be fetched.
 
-Branches: `ocbk` is the only work branch, `main` only follows upstream, and `ocbk-pre-tidy` is the
+Branches: `emaki` is the only work branch, `main` only follows upstream, and `ocbk-pre-tidy` is the
 history before the last rebase. Scratch branches a rebase makes (the reference merge, the
 rebased copy) are deleted once the rebase lands; nothing may refer to them.
 
@@ -182,21 +182,21 @@ and its submodules inherit it. Give a new fork module the same line. `clippy.tom
 | Fork docs and housekeeping | `c187555`, `2a02010`, `9da2da0`, `85b7605`, `50eae0b`, and this page | `FORK.md`, `docs/fork/` |
 
 KDE Connect, phone messages, adb and the status-item client were written here and moved to
-amane-shell (`amane-phone`, `amane-status`) in its Phase 9. The tidy took them out of every commit
+emaki (`emaki-phone`, `emaki-status`) in its Phase 9. The tidy took them out of every commit
 rather than keeping them and their removal; the generic pieces they brought (D-Bus conversions,
 `Bus::emit_to`, the `ScrollArea` end, a multiline input that sends with Enter, video frames) stayed.
 
 ## Reviewing the fork
 
 ```sh
-git log --oneline --stat fork-base..ocbk     # every fork commit and the files it touched
-git diff --stat fork-base..ocbk              # the whole delta, by file
-git diff fork-base..ocbk -- <paths>          # one feature (paths in the commit map)
+git log --oneline --stat fork-base..emaki     # every fork commit and the files it touched
+git diff --stat fork-base..emaki              # the whole delta, by file
+git diff fork-base..emaki -- <paths>          # one feature (paths in the commit map)
 ```
 
 ## Consumed by
 
-The [`amane-shell`](https://github.com/098765434/amane-shell) bar, as a git dependency pinned to a
+The [`emaki`](https://github.com/emaki-desktop/emaki) bar, as a git dependency pinned to a
 `rev` on this branch. For local co-development the shell carries a git-ignored
 `.cargo/local.toml` with `paths = ["../amane"]`, used as `cargo --config .cargo/local.toml …`
 (`cargo clippy --config …` for clippy, which doesn't see a `--config` given before it).
@@ -209,23 +209,23 @@ this fork.
 The same routine as the niri fork's:
 
 1. **Tag the new base.** `git fetch upstream`, then `git tag fork-base-<date> upstream/main`.
-   Keep the branch as it was: `git branch -f ocbk-pre-tidy ocbk` and push it, so revisions
+   Keep the branch as it was: `git branch -f ocbk-pre-tidy emaki` and push it, so revisions
    pinned before the rebase stay fetchable.
-2. **Make a reference merge.** On a scratch branch, `git merge upstream/main` into `ocbk` and
-   resolve it once. Build it, run the tests, and build amane-shell against it. Its tree is what the
+2. **Make a reference merge.** On a scratch branch, `git merge upstream/main` into `emaki` and
+   resolve it once. Build it, run the tests, and build emaki against it. Its tree is what the
    rebase must end with.
-3. **Rebase.** `git rebase --onto fork-base-<date> fork-base ocbk`. Resolve each conflict toward
+3. **Rebase.** `git rebase --onto fork-base-<date> fork-base emaki`. Resolve each conflict toward
    the reference merge; on a fork-owned file, take the fork's side and port upstream's intent.
-   Afterwards, `git diff <reference> ocbk` must be empty, or show only what was decided on purpose.
+   Afterwards, `git diff <reference> emaki` must be empty, or show only what was decided on purpose.
 4. **Check every commit.** `git rebase -x 'cargo check --all-targets' fork-base-<date>`, putting
    `Cargo.lock` back after each check (cargo rewrites it), then fmt, clippy with and without
    `polkit-agent`, `cargo test --lib`, the GPU tests (`-- --ignored`) and `nix build` at the tip.
-5. **Compare.** `git range-diff <old fork-base>..ocbk-pre-tidy fork-base-<date>..ocbk`: what changed
+5. **Compare.** `git range-diff <old fork-base>..ocbk-pre-tidy fork-base-<date>..emaki`: what changed
    in each commit beyond the conflicts.
 6. **Move `fork-base`** to the new base, check that `docs/src` and `ARCHITECTURE.md` still match
-   it, fast-forward the fork's `main`, force-push `ocbk` with a lease, and update this page's
+   it, fast-forward the fork's `main`, force-push `emaki` with a lease, and update this page's
    commit map (the hashes change).
-7. **Bump amane-shell**: the `rev`, and the `outputHashes` entry in its `flake.nix`.
+7. **Bump emaki**: the `rev`, and the `outputHashes` entry in its `flake.nix`.
 8. **A live session** with the shell on the new revision: text fields and password fill, popups,
    gestures, glass.
 

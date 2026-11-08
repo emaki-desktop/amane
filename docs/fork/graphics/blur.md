@@ -4,9 +4,9 @@ A layer window can tell the compositor where to blur behind it: as plain
 rectangles (`blur_region`) or as rounded, fading shapes, each optionally drawn
 with a liquid-glass material (`blur_shapes`). Its content can also blend with
 the frosted backdrop (`vibrant`). The compositor side is in the niri fork's
-[blur shapes](https://github.com/098765434/niri/blob/ocbk/docs/fork/effects/blur-shapes.md),
-[vibrancy](https://github.com/098765434/niri/blob/ocbk/docs/fork/effects/vibrancy.md) and
-[materials](https://github.com/098765434/niri/blob/ocbk/docs/fork/effects/materials.md) docs.
+[blur shapes](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/effects/blur-shapes.md),
+[vibrancy](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/effects/vibrancy.md) and
+[materials](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/effects/materials.md) docs.
 
 ## Usage
 
@@ -50,7 +50,7 @@ The rest of this page covers how it works.
 `LayerWindow::blur_shapes(Vec<BlurShape>)` sends rounded rectangles, each with
 its own corner radius, alpha, material and tint. Shapes take the place of a blur
 region. The protocol is private to the niri fork
-([niri fork: blur shapes](https://github.com/098765434/niri/blob/ocbk/docs/fork/effects/blur-shapes.md));
+([niri fork: blur shapes](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/effects/blur-shapes.md));
 it is vendored at `protocols/niri-blur-shapes-v1.xml`.
 
 | API | Meaning |

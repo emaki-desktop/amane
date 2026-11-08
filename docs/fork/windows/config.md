@@ -13,9 +13,9 @@ struct Appearance {
     dark: bool,
 }
 
-// ~/.config/amane-shell/appearance.json
+// ~/.config/emaki/appearance.json
 impl Settings for Appearance {
-    const APP: &'static str = "amane-shell";
+    const APP: &'static str = "emaki";
     const FILE: &'static str = "appearance";
 }
 

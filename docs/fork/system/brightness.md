@@ -29,4 +29,4 @@ Without uevents the backlight is polled every half second as before; without
 nothing changes.
 
 niri keeps an IPC change only until it reads its config again. Keeping the level is up to the
-app; amane-shell writes it into its `displays.kdl` once it has rested.
+app; emaki writes it into its `displays.kdl` once it has rested.

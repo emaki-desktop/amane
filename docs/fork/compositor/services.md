@@ -11,12 +11,12 @@ view, which subscribes the surface to changes) plus static control methods,
 matching the rest of Amane's service layer.
 
 The niri side of the fork's events and actions is documented in the niri fork:
-[IPC events](https://github.com/098765434/niri/blob/ocbk/docs/fork/ipc/events.md)
+[IPC events](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/ipc/events.md)
 (`OverviewProgress`, `ViewOffsetChanged`, `WorkspaceSwitchProgress`, `DesktopObscured`),
-[IPC actions](https://github.com/098765434/niri/blob/ocbk/docs/fork/ipc/actions.md)
+[IPC actions](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/ipc/actions.md)
 (`MoveColumnToIndex` by window id) and the
-[desktop layer](https://github.com/098765434/niri/blob/ocbk/docs/fork/layout/desktop-layer.md);
-the index is [niri `docs/fork/README.md`](https://github.com/098765434/niri/blob/ocbk/docs/fork/README.md).
+[desktop layer](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/layout/desktop-layer.md);
+the index is [niri `docs/fork/README.md`](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/README.md).
 
 ## Services
 
@@ -159,7 +159,7 @@ so a slow socket never stalls drawing (like `Workspaces::focus`):
 | `Windows::fullscreen(id)` | `FullscreenWindow` |
 | `Windows::toggle_floating(id)` | `ToggleWindowFloating` |
 | `Windows::move_to_workspace(id, ws)` | `MoveWindowToWorkspace` (the focus follows) |
-| `Windows::move_to(id, ws, index)` | `MoveWindowToWorkspace` with `focus: false` when `ws` is `Some`, then `MoveColumnToIndex` with the window's id: its column to `index` (from 1), the focus staying put. That needs the niri fork ([actions](https://github.com/098765434/niri/blob/ocbk/docs/fork/ipc/actions.md)); on stock niri (no `move-column-to-index-window-id` in `Features`) the window is focused first, then its column moved |
+| `Windows::move_to(id, ws, index)` | `MoveWindowToWorkspace` with `focus: false` when `ws` is `Some`, then `MoveColumnToIndex` with the window's id: its column to `index` (from 1), the focus staying put. That needs the niri fork ([actions](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/ipc/actions.md)); on stock niri (no `move-column-to-index-window-id` in `Features`) the window is focused first, then its column moved |
 | `Windows::focus_column_left()` | `FocusColumnLeft` |
 | `Windows::focus_column_right()` | `FocusColumnRight` |
 | `Windows::spawn(cmd)` | `Spawn` |
@@ -238,7 +238,7 @@ up to two seconds for its answer, so call it from a service thread, not a view. 
 
 | Function | Answers |
 |---|---|
-| `niri::features()` | the fork's [`Features`](https://github.com/098765434/niri/blob/ocbk/docs/fork/ipc/features.md): `.has("hdr")`, `.version("blur-shapes")`, `.is_fork()`. Asked once and kept; empty on stock niri, which can't parse the request |
+| `niri::features()` | the fork's [`Features`](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/ipc/features.md): `.has("hdr")`, `.version("blur-shapes")`, `.is_fork()`. Asked once and kept; empty on stock niri, which can't parse the request |
 | `niri::outputs()` | each output's name, make, model, serial, size in millimetres, logical place and `Transform`, VRR, and the fork's HDR fields |
 | `niri::windows()`, `niri::focused_window()` | windows with their `pid`, workspace, focus, floating, and the fork's `is_fullscreen` |
 | `niri::casts()` | screencasts: kind, target (an output or a window), whether active, the casting `pid` |

@@ -3,7 +3,7 @@
 What an amane process holds in GPU memory and RAM at idle, what each part costs, and what the
 fork does about it. Each optimisation says what it cost, why, what changed, how to switch it
 off, and how to measure it. The numbers are from a Ryzen AI 7 laptop with a Radeon 860M, a
-2880×1800 panel at scale 1.75, and the amane-shell desktop (2026-10-26).
+2880×1800 panel at scale 1.75, and the emaki desktop (2026-10-26).
 
 On an integrated GPU, "VRAM" is ordinary RAM that the firmware reserves at boot (here 4 GiB of
 32), so it is already missing from what Linux sees. Lowering it pays off twice: usage past the
@@ -53,7 +53,7 @@ process (`src/graphics/gpu/shared.rs`), so this was paid once per process, but i
 largest single item on the desktop. `RendererOptions` has no setting for it.
 
 **What changed.** amane's `vello_encoding` comes from a fork,
-[098765434/vello](https://github.com/098765434/vello) branch `ocbk`, one commit on top of tag
+[emaki-desktop/vello](https://github.com/emaki-desktop/vello) branch `emaki`, one commit on top of tag
 `v0.11.0` (the tree crates.io's 0.11.0 was published from). It sizes the buffers for a shell:
 
 | Buffer | Upstream | Fork |
@@ -63,7 +63,7 @@ largest single item on the desktop. `RendererOptions` has no setting for it.
 | `bin_data`, `blend_spill` | 2¹⁸, 2²⁰ | unchanged |
 
 About 29 MB a set instead of 165. The fork's own
-[docs/fork/README.md](https://github.com/098765434/vello/blob/ocbk/docs/fork/README.md) has the
+[docs/fork/README.md](https://github.com/emaki-desktop/vello/blob/emaki/docs/fork/README.md) has the
 bytes and the measurements. The patch is wired in `Cargo.toml`'s `[patch.crates-io]`; a patch
 only applies from the root manifest, so a program that uses amane as a git dependency (the
 shell does) repeats the same entry in its own `Cargo.toml`, and a nix build needs the fork's hash

@@ -2233,7 +2233,7 @@ dependencies = [
 [[package]]
 name = "vello"
 version = "0.11.0"
-source = "git+https://github.com/098765434/vello?rev=8b61bd281d2d3be32f4de66b1e3c05b10fe7b8e6#8b61bd281d2d3be32f4de66b1e3c05b10fe7b8e6"
+source = "git+https://github.com/emaki-desktop/vello?rev=ea3fb9eac96c4dea33e1537395d1622edcc7669d#ea3fb9eac96c4dea33e1537395d1622edcc7669d"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
@@ -2251,7 +2251,7 @@ dependencies = [
 [[package]]
 name = "vello_encoding"
 version = "0.11.0"
-source = "git+https://github.com/098765434/vello?rev=8b61bd281d2d3be32f4de66b1e3c05b10fe7b8e6#8b61bd281d2d3be32f4de66b1e3c05b10fe7b8e6"
+source = "git+https://github.com/emaki-desktop/vello?rev=ea3fb9eac96c4dea33e1537395d1622edcc7669d#ea3fb9eac96c4dea33e1537395d1622edcc7669d"
 dependencies = [
  "bytemuck",
  "guillotiere",
@@ -2263,7 +2263,7 @@ dependencies = [
 [[package]]
 name = "vello_shaders"
 version = "0.11.0"
-source = "git+https://github.com/098765434/vello?rev=8b61bd281d2d3be32f4de66b1e3c05b10fe7b8e6#8b61bd281d2d3be32f4de66b1e3c05b10fe7b8e6"
+source = "git+https://github.com/emaki-desktop/vello?rev=ea3fb9eac96c4dea33e1537395d1622edcc7669d#ea3fb9eac96c4dea33e1537395d1622edcc7669d"
 dependencies = [
  "bytemuck",
  "log",

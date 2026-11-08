@@ -80,7 +80,7 @@ impl Window {
     }
 
     /*
-     * what the compositor, the dock and window rules know the app by, like "amane-settings";
+     * what the compositor, the dock and window rules know the app by, like "emaki-settings";
      * read once, when the window opens, and App::app_id is used when it is not set
      */
     pub fn app_id(mut self, app_id: &str) -> Self {

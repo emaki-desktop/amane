@@ -1,10 +1,10 @@
 # amane fork docs
 
 This fork of [amane](https://github.com/MystiaFin/amane) adds what the
-[amane-shell](https://github.com/098765434/amane-shell) desktop needs: xdg-popups, niri
+[emaki](https://github.com/emaki-desktop/emaki) desktop needs: xdg-popups, niri
 compositor services that follow gestures frame by frame, app windows that real apps run in,
 blur shapes and vibrancy, parley text, spring animation, and more system services. The work is
-on branch `ocbk`, on top of upstream commit `544cbfc` (tag `fork-base`, upstream's `main` of
+on branch `emaki`, on top of upstream commit `544cbfc` (tag `fork-base`, upstream's `main` of
 2026-10-21).
 
 Upstream's own guide ([`docs/src/`](../src/), the mdBook) and `ARCHITECTURE.md` are left exactly
@@ -97,32 +97,32 @@ fork](#maintaining-the-fork) is for whoever rebases it onto upstream.
 
 ### Pinning it
 
-The fork is a git dependency, pinned to a commit on `ocbk`:
+The fork is a git dependency, pinned to a commit on `emaki`:
 
 ```toml
 [dependencies]
-amane = { git = "https://github.com/098765434/amane", rev = "<ocbk commit>", features = ["polkit-agent"] }
+amane = { git = "https://github.com/emaki-desktop/amane", rev = "<emaki commit>", features = ["polkit-agent"] }
 ```
 
 Features: `polkit-agent` (be the session's authentication agent, [polkit](system/polkit.md));
 `vello-stats` (with `AMANE_FRAMES=1`, what each vello run took of the scratch buffers,
 [memory](internals/memory.md)). Both are off by default.
 
-The fork draws through a [vello fork](https://github.com/098765434/vello) (branch `ocbk`) whose
+The fork draws through a [vello fork](https://github.com/emaki-desktop/vello) (branch `emaki`) whose
 scratch buffers are sized for a shell and let go when idle. Cargo applies a `[patch.crates-io]`
 only from the root manifest, so a program that depends on amane repeats the two lines from
 amane's `Cargo.toml`, at the same `rev`:
 
 ```toml
 [patch.crates-io]
-vello = { git = "https://github.com/098765434/vello", rev = "<vello commit>" }
-vello_encoding = { git = "https://github.com/098765434/vello", rev = "<vello commit>" }
+vello = { git = "https://github.com/emaki-desktop/vello", rev = "<vello commit>" }
+vello_encoding = { git = "https://github.com/emaki-desktop/vello", rev = "<vello commit>" }
 ```
 
 A Nix build (`rustPlatform.buildRustPackage`) needs a content hash for each git dependency in
 `cargoLock.outputHashes`: one for `amane-<version>` and one for `vello-<version>`, which covers
 every crate from the same vello rev. After a `rev` bump the first build prints the expected
-`sha256-…` on mismatch; amane-shell's `flake.nix` is the model.
+`sha256-…` on mismatch; emaki's `flake.nix` is the model.
 
 ### Environment variables
 
@@ -155,26 +155,26 @@ library: it points the CLI at another shell folder without changing its saved ta
 [api-cheatsheet.md](api-cheatsheet.md) has the fork's rows for upstream's
 [cheatsheet](../src/cheatsheet.md).
 
-### Moved to amane-shell
+### Moved to emaki
 
-Features only amane-shell and its apps use went to crates of their own in
-[amane-shell](https://github.com/098765434/amane-shell) (Phase 9 of its roadmap), so this fork
+Features only emaki and its apps use went to crates of their own in
+[emaki](https://github.com/emaki-desktop/emaki) (Phase 9 of its roadmap), so this fork
 stays a generic library:
 
 | Was | Now |
 |---|---|
-| `status_item` (`StatusItem`, `LiveActivity`, the `org.amane.StatusBar1` wire types) | `amane-status` (`crates/status`) |
-| `KdeConnect`, `PhoneMessages` and the phone types | `amane-phone` (`crates/phone`) |
-| `Adb`, `amane::adb`, mDNS discovery (and the `mdns-sd` dependency) | `amane-phone` |
+| `status_item` (`StatusItem`, `LiveActivity`, the `org.emaki.StatusBar1` wire types) | `emaki-status` (`crates/status`) |
+| `KdeConnect`, `PhoneMessages` and the phone types | `emaki-phone` (`crates/phone`) |
+| `Adb`, `amane::adb`, mDNS discovery (and the `mdns-sd` dependency) | `emaki-phone` |
 
 They build on public amane API: `Bus`, `Service`, `run_in_order`, `Service::watched_within`,
 `Service::peek` and `ServiceError` ([errors](system/errors.md)).
 ### Other repos
 
-- **Server side:** the [niri fork's docs](https://github.com/098765434/niri/blob/ocbk/docs/fork/README.md)
+- **Server side:** the [niri fork's docs](https://github.com/emaki-desktop/niri/blob/emaki/docs/fork/README.md)
   cover the protocols and IPC these features use: blur shapes, vibrancy, materials, gesture
   events, `DesktopObscured`, `MoveColumnToIndex` by window id.
-- **Main consumer:** [amane-shell's docs](https://github.com/098765434/amane-shell/blob/main/docs/README.md).
+- **Main consumer:** [emaki's docs](https://github.com/emaki-desktop/emaki/blob/main/docs/README.md).
 
 ## Maintaining the fork
 
@@ -188,7 +188,7 @@ map, the lints and the housekeeping rules.
 
 | | |
 |---|---|
-| `ocbk` | the work branch: the fork's commits over `fork-base` (`git log --oneline fork-base..ocbk`) |
+| `emaki` | the work branch: the fork's commits over `fork-base` (`git log --oneline fork-base..emaki`) |
 | `main` | mirrors upstream's `main`, nothing of the fork's |
 | `ocbk-pre-tidy` | the history before the last rebase, kept on origin so revisions pinned before it can still be fetched |
 | `fork-base` | the upstream commit the fork sits on: `544cbfc`, upstream's `main` of 2026-10-21 |

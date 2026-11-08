@@ -11,7 +11,7 @@ Logind::subscribe(|logind| {
 }).forever();
 
 // keep the computer awake while this is held
-let inhibitor = Logind::inhibit("idle:sleep", "amane-shell", "Keep awake is on", "block")?;
+let inhibitor = Logind::inhibit("idle:sleep", "emaki", "Keep awake is on", "block")?;
 ```
 
 | API | Meaning |

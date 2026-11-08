@@ -1,7 +1,7 @@
-# amane `ocbk`: resource-optimization plan
+# amane `emaki`: resource-optimization plan
 
 ## Context
-`098765434/amane` (branch `ocbk`, a fork of the MystiaFin Wayland shell library, ~21k LOC Rust, vello 0.11 + wgpu 30) runs the `amane-shell` bar. The goal is to keep every feature but cut CPU wake-ups, RAM, VRAM and binary size as far as possible.
+`emaki-desktop/amane` (branch `emaki`, a fork of the MystiaFin Wayland shell library, ~21k LOC Rust, vello 0.11 + wgpu 30) runs the `emaki` bar. The goal is to keep every feature but cut CPU wake-ups, RAM, VRAM and binary size as far as possible.
 
 The overall design is already sound. It only redraws when something changed, it requests no frame callbacks while idle, it shares one wgpu device, and glyph caches are bounded. Most of the waste is in four places:
 1. **Polling:** background services poll on timers (~470 wake-ups/min when idle).
@@ -11,7 +11,7 @@ The overall design is already sound. It only redraws when something changed, it 
 
 The work is split into phases ordered by impact ÷ risk. Each phase is a separate commit or PR so it can be measured and reverted on its own.
 
-> Line numbers refer to `ocbk` at `fe941a9` and may drift.
+> Line numbers refer to `emaki` at `fe941a9` and may drift.
 
 ## Status
 
@@ -43,7 +43,7 @@ the done items work is in [Architecture](architecture.md).
 ---
 
 ## Phase 0: Baseline measurement (do first)
-- Build a small bar from `examples/` plus the real `amane-shell` against a path dep.
+- Build a small bar from `examples/` plus the real `emaki` against a path dep.
 - Record the following, both idle (5 min) and with mouse/animation activity:
   - CPU wake-ups: `perf stat -e sched:sched_wakeup`, `powertop`, or `pidstat -w`.
   - RSS/PSS: `smem`.
@@ -192,7 +192,7 @@ the done items work is in [Architecture](architecture.md).
 
 ## Verification
 - `cargo build --release`, `cargo clippy --all-targets`, `cargo test` (pam tests and others). Use the existing CI in `.github/workflows/test.yml`.
-- Run `examples/apps.rs`, `examples/text_input.rs` and `amane-shell` on niri (with the gesture fork) and, if available, on Sway/Hyprland.
+- Run `examples/apps.rs`, `examples/text_input.rs` and `emaki` on niri (with the gesture fork) and, if available, on Sway/Hyprland.
 - Functional checks:
   - network connect and disconnect, plus a Wi-Fi scan list update
   - bluetooth pairing
