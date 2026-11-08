@@ -80,19 +80,30 @@ pub fn ipc_socket() -> PathBuf {
 }
 
 /*
- * the socket an app with this app-id listens on: amane.sock for "amane", the shell's,
- * and amane-<app id>.sock for the rest, so apps and the shell run side by side;
- * "amane-settings" listens on amane-settings.sock
+ * the socket an app with this app-id listens on: a plain lowercase name ("amane", the
+ * shell's, "amane-settings", "emaki-drop") is its own socket, <app id>.sock, so a
+ * program family names its sockets itself; any other id (reverse-DNS, a desktop id)
+ * gets amane-<app id>.sock, so it can't land on another program's socket
  */
+// lowercase words joined by dashes: "emaki", "emaki-drop", not "org.example.Notes"
+fn is_plain_name(app_id: &str) -> bool {
+    app_id.split('-').all(|word| {
+        !word.is_empty()
+            && word
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    })
+}
+
 pub fn ipc_socket_for(app_id: &str) -> PathBuf {
     // every wayland session sets this, and it is private to the logged in user
     let runtime_directory =
         env::var_os("XDG_RUNTIME_DIR").expect("failed to find socket: XDG_RUNTIME_DIR is not set");
 
-    let name = match app_id.strip_prefix("amane") {
-        Some("") => String::from("amane.sock"),
-        Some(rest) if rest.starts_with('-') => format!("{app_id}.sock"),
-        _ => format!("amane-{app_id}.sock"),
+    let name = if is_plain_name(app_id) {
+        format!("{app_id}.sock")
+    } else {
+        format!("amane-{app_id}.sock")
     };
 
     PathBuf::from(runtime_directory).join(name)
@@ -137,7 +148,11 @@ mod tests {
 
         assert_eq!(name("amane"), "amane.sock");
         assert_eq!(name("amane-settings"), "amane-settings.sock");
+        assert_eq!(name("emaki"), "emaki.sock");
+        assert_eq!(name("emaki-drop"), "emaki-drop.sock");
         assert_eq!(name("org.example.Notes"), "amane-org.example.Notes.sock");
-        assert_eq!(name("amanex"), "amane-amanex.sock");
+        assert_eq!(name("code.desktop"), "amane-code.desktop.sock");
+        assert_eq!(name("Notes"), "amane-Notes.sock");
+        assert_eq!(name("a--b"), "amane-a--b.sock");
     }
 }
