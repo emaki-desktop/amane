@@ -37,6 +37,12 @@ impl Renderer {
         self.commands
     }
 
+    // how many real pixels a logical one covers here, as drawn (zoom and rotation included)
+    pub(crate) fn pixel_scale(&self) -> f32 {
+        let t = &self.transform;
+        f32::max(t.sx.hypot(t.ky), t.kx.hypot(t.sy))
+    }
+
     pub fn group(&self) -> Self {
         Self {
             commands: Vec::new(),

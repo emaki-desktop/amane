@@ -295,6 +295,28 @@ hidden window's memory.
 GTT and 66 MB RSS; after, no GPU client at all and 15 MB RSS. A shell with its bar and dock
 showing is unchanged (31 MB VRAM, 15 MB GTT): its visible windows keep the device.
 
+## Images are decoded as big as they're drawn, under a byte cap
+
+**What it cost.** An image fill without `.thumbnail()` decoded its file whole, and
+`Image::loaded()`/`Image::size()` did too: a 512-pixel app icon drawn at 84 pixels in the
+dock, or a photo shown as a 40-pixel launcher preview, kept every pixel on the CPU, and each
+window that drew it uploaded the whole thing with a full mip chain. Shrunk copies were never
+let go, and every image decoded on a thread of its own.
+
+**What changed** (`src/graphics/image.rs`):
+
+- A fill without a thumbnail size asks for `load_drawn` with the area it fills in real
+  pixels (`Renderer::pixel_scale`), rounded up to a power of two and at least 256 a side;
+  while that copy decodes, the largest copy of the same file already decoded stands in, so an
+  animation or a resize never shows a gap.
+- `Image::loaded()` decodes a 256-pixel copy (`PROBE`), which an icon then draws from with
+  no second decode; `Image::size()` answers from each file's own size, kept when it's read.
+- Every copy kept carries when a frame last asked for it, and past `AMANE_IMAGE_CACHE_MB`
+  (64) the longest unused go first, never one asked for in the last two seconds.
+- Two `amane-decode` threads take the decodes in order and park when there are none.
+
+**Switching it off.** `AMANE_IMAGE_FULL=1` decodes every fill at the file's own size.
+
 ## Spare textures that outlive their frame are dropped
 
 **What it cost.** Finished window-sized textures (`spare` in `Gpu`) were kept for reuse and
@@ -349,6 +371,5 @@ many times a frame went through vello; an idle frame should say 0.
 ## Planned
 
 The rest of the idle-memory work, in order of payoff: the GTT Quick Settings leaves behind (a
-driver-level view next), decoding images at their drawn size with a byte-capped cache,
-content-sized vibrant layers, sharing pipelines and picture textures across windows, and
-event-driven services in place of polls. Each lands with its own section here.
+driver-level view next), content-sized vibrant layers, and sharing pipelines and picture
+textures across windows. Each lands with its own section here.

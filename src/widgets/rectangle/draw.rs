@@ -133,7 +133,19 @@ fn paint(rectangle: &Rectangle, renderer: &mut Renderer, area: Area, radius: Cor
 
 fn paint_image(fill: &Image, renderer: &mut Renderer, area: Area, radius: Corners) {
     // still decoding, or unreadable
-    let Some(image) = image::load(&fill.path, fill.thumbnail, fill.blur) else {
+    // a size asked for is kept; otherwise only as big as it's drawn here
+    let image = match fill.thumbnail {
+        Some(_) => image::load(&fill.path, fill.thumbnail, fill.blur),
+        None => {
+            let scale = renderer.pixel_scale();
+            image::load_drawn(
+                &fill.path,
+                (area.width * scale, area.height * scale),
+                fill.blur,
+            )
+        }
+    };
+    let Some(image) = image else {
         return;
     };
 

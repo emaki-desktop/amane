@@ -3,11 +3,12 @@ mod soften;
 mod svg;
 
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, LazyLock, Mutex, PoisonError};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use png::{ColorType, Decoder, Transformations};
 use zune_jpeg::JpegDecoder;
@@ -78,35 +79,189 @@ struct Decoded;
 // a file, the size it is shrunk to cover (none for its own size), and how far it is blurred
 type Key = (PathBuf, Option<(u32, u32)>, u32);
 
-// every image asked for: none while it is still decoding, or when it could not be read
-static LOADED: LazyLock<Mutex<HashMap<Key, Option<Arc<Bitmap>>>>> =
+// an image asked for: none while it is still decoding, or when it could not be read
+struct Entry {
+    image: Option<Arc<Bitmap>>,
+    // when a frame last asked for it, for letting the longest unused go first
+    used: Instant,
+}
+
+// every image asked for
+static LOADED: LazyLock<Mutex<HashMap<Key, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// each file's own size in pixels, once decoded, for laying it out at its shape
+static SIZES: LazyLock<Mutex<HashMap<PathBuf, (u32, u32)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /*
+ * the decoded copies kept, in bytes, past which the longest unused go: AMANE_IMAGE_CACHE_MB,
+ * 64 by default. One a frame asked for within KEPT_WHILE_SHOWN stays whatever the total
+ */
+static CAP: LazyLock<usize> = LazyLock::new(|| {
+    std::env::var("AMANE_IMAGE_CACHE_MB")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(64)
+        * 1024
+        * 1024
+});
+
+const KEPT_WHILE_SHOWN: Duration = Duration::from_secs(2);
+
+/*
+ * the copy `loaded` and `size` decode to say a file is ready: big enough to draw an icon or a
+ * thumbnail from at once, far smaller than most photos
+ */
+const PROBE: (u32, u32) = (256, 256);
+
+/*
  * decoding a large image takes long enough to drop frames, so it happens
- * on its own thread; until it is done this gives none and the image is
- * left out, then the window is woken to draw it
+ * on one of the decoding threads; until it is done this gives none and the
+ * image is left out, then the window is woken to draw it
  */
 pub fn load(path: &Path, cover: Option<(u32, u32)>, blur: u32) -> Option<Arc<Bitmap>> {
     let mut loaded = LOADED.lock().unwrap_or_else(PoisonError::into_inner);
 
     let key = (path.to_path_buf(), cover, blur);
 
-    if let Some(image) = loaded.get(&key) {
-        if image.is_none() {
+    if let Some(entry) = loaded.get_mut(&key) {
+        entry.used = Instant::now();
+        if entry.image.is_none() {
             changes::note_read(TypeId::of::<Decoded>());
         }
 
-        return image.clone();
+        return entry.image.clone();
     }
 
-    loaded.insert(key.clone(), None);
+    loaded.insert(
+        key.clone(),
+        Entry {
+            image: None,
+            used: Instant::now(),
+        },
+    );
+    drop(loaded);
 
-    thread::spawn(move || decode(key));
+    queue(key);
 
     changes::note_read(TypeId::of::<Decoded>());
 
     None
+}
+
+/*
+ * `path` to draw over `pixels` (the area it fills, in real pixels): decoded only big enough
+ * for that, at least PROBE and rounded up to a power of two, so a photo or a 512-pixel icon
+ * drawn small keeps a small copy, on the cpu and on the gpu. While that copy decodes,
+ * another copy of the same file stands in, so a size that changes (an animation, a window
+ * resized) never shows a gap. AMANE_IMAGE_FULL=1 decodes every file at its own size
+ */
+pub fn load_drawn(path: &Path, pixels: (f32, f32), blur: u32) -> Option<Arc<Bitmap>> {
+    static FULL: LazyLock<bool> =
+        LazyLock::new(|| std::env::var_os("AMANE_IMAGE_FULL").is_some_and(|v| v == "1"));
+    if *FULL {
+        return load(path, None, blur);
+    }
+
+    let bucket = |v: f32| (v.max(1.0).ceil() as u32).next_power_of_two();
+    let want = (bucket(pixels.0).max(PROBE.0), bucket(pixels.1).max(PROBE.1));
+    if let Some(image) = load(path, Some(want), blur) {
+        return Some(image);
+    }
+
+    // the largest copy of the file already decoded, with the same blur
+    let loaded = LOADED.lock().unwrap_or_else(PoisonError::into_inner);
+    loaded
+        .iter()
+        .filter(|((p, _, b), _)| p == path && *b == blur)
+        .filter_map(|(_, entry)| entry.image.clone())
+        .max_by_key(|image| image.width * image.height)
+}
+
+/// Whether `path` is decoded, at least as the small copy drawing starts from; starts that if
+/// nothing asked for it yet. A file that can't be read never becomes ready.
+pub fn ready(path: &Path) -> bool {
+    load(path, Some(PROBE), 0).is_some()
+}
+
+/// The file's own size in pixels once it's decoded (starting that if need be).
+pub fn size(path: &Path) -> Option<(u32, u32)> {
+    if let Some(size) = SIZES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(path)
+    {
+        return Some(*size);
+    }
+    load(path, Some(PROBE), 0)?;
+    SIZES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(path)
+        .copied()
+}
+
+// waiting decodes, served by up to DECODERS threads that park when there are none
+static QUEUE: Mutex<(VecDeque<Key>, usize)> = Mutex::new((VecDeque::new(), 0));
+static WORK: Condvar = Condvar::new();
+const DECODERS: usize = 2;
+
+fn queue(key: Key) {
+    let mut queue = QUEUE.lock().unwrap_or_else(PoisonError::into_inner);
+    queue.0.push_back(key);
+    if queue.1 < DECODERS {
+        queue.1 += 1;
+        let spawned = thread::Builder::new()
+            .name(String::from("amane-decode"))
+            .spawn(decoder);
+        if spawned.is_err() {
+            queue.1 -= 1;
+        }
+    }
+    drop(queue);
+    WORK.notify_one();
+}
+
+fn decoder() {
+    loop {
+        let mut queue = QUEUE.lock().unwrap_or_else(PoisonError::into_inner);
+        let key = loop {
+            if let Some(key) = queue.0.pop_front() {
+                break key;
+            }
+            queue = WORK.wait(queue).unwrap_or_else(PoisonError::into_inner);
+        };
+        drop(queue);
+        decode(key);
+    }
+}
+
+// the copies kept now come to more than the cap: the longest unused go, not one shown now
+fn evict(loaded: &mut HashMap<Key, Entry>) {
+    let bytes = |entry: &Entry| {
+        entry
+            .image
+            .as_ref()
+            .map_or(0, |image| image.width as usize * image.height as usize * 4)
+    };
+    let mut total: usize = loaded.values().map(bytes).sum();
+    if total <= *CAP {
+        return;
+    }
+    let mut old: Vec<(Instant, Key, usize)> = loaded
+        .iter()
+        .filter(|(_, entry)| entry.image.is_some() && entry.used.elapsed() > KEPT_WHILE_SHOWN)
+        .map(|(key, entry)| (entry.used, key.clone(), bytes(entry)))
+        .collect();
+    old.sort_by_key(|(used, ..)| *used);
+    for (_, key, size) in old {
+        if total <= *CAP {
+            break;
+        }
+        loaded.remove(&key);
+        total -= size;
+    }
+    crate::allocator::trim_soon();
 }
 
 fn decode(key: Key) {
@@ -117,6 +272,11 @@ fn decode(key: Key) {
         return;
     };
 
+    SIZES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(path.clone(), (image.width, image.height));
+
     // only the small copy is kept, the full size one is dropped here
     let image = match cover {
         Some((width, height)) => shrink::to_cover(image, *width, *height),
@@ -126,10 +286,17 @@ fn decode(key: Key) {
     // blurred after shrinking, where there are far fewer pixels to average
     let image = soften::soften(image, *blur);
 
-    LOADED
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(key, Some(Arc::new(image)));
+    let mut loaded = LOADED.lock().unwrap_or_else(PoisonError::into_inner);
+    // asked for and since let go of: kept anyway, it was just made
+    loaded.insert(
+        key,
+        Entry {
+            image: Some(Arc::new(image)),
+            used: Instant::now(),
+        },
+    );
+    evict(&mut loaded);
+    drop(loaded);
 
     changes::mark(TypeId::of::<Decoded>());
 
@@ -146,7 +313,10 @@ pub fn forget(image: &Arc<Bitmap>) {
 
     let before = loaded.len();
     loaded.retain(|(_, cover, _), kept| {
-        let same = kept.as_ref().is_some_and(|kept| Arc::ptr_eq(kept, image));
+        let same = kept
+            .image
+            .as_ref()
+            .is_some_and(|kept| Arc::ptr_eq(kept, image));
 
         cover.is_some() || !same
     });

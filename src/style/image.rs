@@ -81,7 +81,7 @@ impl Image {
     pub fn loaded(path: impl AsRef<Path>) -> bool {
         let path = path.as_ref();
 
-        image::load(path, None, 0).is_some()
+        image::ready(path)
     }
 
     /*
@@ -89,7 +89,7 @@ impl Image {
      * be), to lay a picture out at its own shape, like a message's photo
      */
     pub fn size(path: impl AsRef<Path>) -> Option<(u32, u32)> {
-        image::load(path.as_ref(), None, 0).map(|bitmap| (bitmap.width(), bitmap.height()))
+        image::size(path.as_ref())
     }
 }
 
