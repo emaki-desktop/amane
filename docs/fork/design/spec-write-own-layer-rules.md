@@ -421,17 +421,25 @@ inherited activation variables (§B.5).
  
 ### B.4 Flow
  
-```
-view / input handler           Wayland thread                       compositor
-──────────────────────         ──────────────────────────────       ──────────
-DesktopApp::launch()
-  push LaunchRequest ─────────▶ wake → launch_requested()
-  wake event loop               ├ no xdg-activation global → spawn now, no token
-                                ├ request_token(app_id, seat+serial, surface)  ──▶
-                                └ remember request, arm 500 ms timer
-                                new_token(token)            ◀──────────────────────── done
-                                └ spawn with XDG_ACTIVATION_TOKEN=token
-                                timer fires, no token yet → spawn without token
+```mermaid
+sequenceDiagram
+    participant V as view / input handler
+    participant W as Wayland thread
+    participant C as compositor
+    V->>W: push LaunchRequest, wake the event loop
+    Note over W: launch_requested()
+    alt no xdg-activation global
+        Note over W: spawn now, no token
+    else
+        W->>C: request_token(app_id, seat+serial, surface)
+        Note over W: remember the request, arm a 500 ms timer
+        alt the token comes
+            C-->>W: new_token(token)
+            Note over W: spawn with XDG_ACTIVATION_TOKEN=token
+        else the timer fires first
+            Note over W: spawn without a token
+        end
+    end
 ```
  
 1. **Queue.** `launch()` pushes
