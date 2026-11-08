@@ -5,7 +5,7 @@ use wayland_client::{
     protocol::{wl_output::WlOutput, wl_surface::WlSurface},
 };
 
-use crate::graphics::Gpu;
+use crate::graphics::WindowGpu;
 use crate::input::{KeyHandlers, Pointer};
 use crate::{changes, frame};
 
@@ -60,7 +60,7 @@ impl WaylandState {
         let display = self.connection.backend().display_ptr().cast();
         let surface = role.wl_surface().id().as_ptr().cast();
 
-        let gpu = Gpu::new(display, surface);
+        let gpu = WindowGpu::new(display, surface);
 
         let fractional = self.make_fractional(role.wl_surface());
 

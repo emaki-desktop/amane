@@ -15,7 +15,7 @@ use wayland_client::{
 };
 
 use crate::changes::Source;
-use crate::graphics::Gpu;
+use crate::graphics::WindowGpu;
 use crate::input::{KeyHandlers, Pointer};
 use crate::popup::PopupView;
 use crate::scale::ScaleFactor;
@@ -80,7 +80,7 @@ pub struct OpenWindow {
     pub vibrant_layers: Option<VibrantLayers>,
 
     // the gpu draws into the surface, so it has to go first when both are dropped
-    pub gpu: Gpu,
+    pub gpu: WindowGpu,
 
     // none at whole scales; dropped before the role, since it belongs to its surface
     pub fractional: Option<Fractional>,

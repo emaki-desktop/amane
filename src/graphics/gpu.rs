@@ -28,6 +28,7 @@ mod shared;
 mod target;
 mod texture;
 mod wait;
+mod window_gpu;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -51,6 +52,7 @@ use crate::graphics::renderer::Command;
 use pass::Pass;
 use shared::Shared;
 pub(crate) use shared::{VELLO_IDLE, release_idle_scratch};
+pub(crate) use window_gpu::WindowGpu;
 
 // AMANE_KEEP_HIDDEN=1 keeps a hidden window's gpu memory, as before the release on hide
 static KEEP_HIDDEN: LazyLock<bool> = LazyLock::new(|| env::var_os("AMANE_KEEP_HIDDEN").is_some());

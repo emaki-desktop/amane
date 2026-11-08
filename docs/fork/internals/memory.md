@@ -272,6 +272,29 @@ atlas stays at 1×1. The GTT is below wgpu's accounting (its Vulkan allocator's 
 mapped upload memory); the next step is a driver-level view (`VK_EXT_device_memory_report`, or
 RADV's `RADV_DEBUG=info`) rather than more guessing.
 
+## A window's GPU is made when it first draws, and the device goes with the last one
+
+**What it cost.** Every window made its `Gpu` when it was added, hidden or not: a wgpu surface,
+four passes, the quads' pipelines, a sampler and a blank texture, and with the first one the
+shared Vulkan device and vello. A program whose windows all wait hidden held all of it all
+day: a drop shelf sitting in the bar, 12.4 MB of VRAM and 3.3 MB of GTT for a window nobody
+had opened, and Mesa's driver threads and memory beside.
+
+**What changed.** A window holds a `WindowGpu` (`src/graphics/gpu/window_gpu.rs`), which makes
+its `Gpu` at the first frame it draws. Hiding releases the window's memory and keeps its
+pipelines, as before, so a launcher opened again is as quick as it was. Once every window of
+the program has been hidden for `AMANE_DEVICE_IDLE` seconds (60 by default; 0 for life), every
+window's `Gpu` goes whole and the shared device and vello with them; the next window shown
+makes them afresh, which Mesa's shader cache keeps quick, but that first frame pays for it. A
+program with a window always showing (the shell's bar) never gets there.
+
+**Switching it off.** `AMANE_DEVICE_IDLE=0`, or `AMANE_KEEP_HIDDEN=1`, which also keeps each
+hidden window's memory.
+
+**Measured** with a debug amane-drop, its grid hidden, after 15 s: before, 12.4 MB VRAM, 3.3 MB
+GTT and 66 MB RSS; after, no GPU client at all and 15 MB RSS. A shell with its bar and dock
+showing is unchanged (31 MB VRAM, 15 MB GTT): its visible windows keep the device.
+
 ## Spare textures that outlive their frame are dropped
 
 **What it cost.** Finished window-sized textures (`spare` in `Gpu`) were kept for reuse and

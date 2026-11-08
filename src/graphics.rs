@@ -20,7 +20,7 @@ pub use color::Color;
 pub use geometry::{Area, Corners};
 pub use gpu::Gpu;
 pub(crate) use gpu::Session as GpuSession;
-pub(crate) use gpu::{VELLO_IDLE, release_idle_scratch};
+pub(crate) use gpu::{VELLO_IDLE, WindowGpu, release_idle_scratch};
 pub use gradient::Gradient;
 pub use join::Join;
 pub use outline::Outline;

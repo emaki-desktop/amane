@@ -19,7 +19,7 @@ use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::{Connection, QueueHandle};
 
 use crate::Popup;
-use crate::graphics::Gpu;
+use crate::graphics::WindowGpu;
 use crate::input::{KeyHandlers, Pointer};
 use crate::popup::{Anchor, ConstraintAdjustment, Gravity, OPENING, PopupView};
 
@@ -337,7 +337,7 @@ impl WaylandState {
         // Create the OpenWindow backing it.
         let display = self.connection.backend().display_ptr().cast();
         let surface_ptr = sctk_popup.wl_surface().id().as_ptr().cast();
-        let gpu = Gpu::new(display, surface_ptr);
+        let gpu = WindowGpu::new(display, surface_ptr);
         let fractional = self.make_fractional(sctk_popup.wl_surface());
 
         let namespace = popup.namespace;

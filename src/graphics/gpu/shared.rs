@@ -121,6 +121,28 @@ pub fn clear() {
     drop(SHARED.with_borrow_mut(Option::take));
 }
 
+/*
+ * how long a process whose windows are all hidden keeps its gpus, the device and vello, so
+ * a window shown again soon finds them: AMANE_DEVICE_IDLE seconds, 60 by default, 0 for life
+ */
+pub static DEVICE_IDLE: LazyLock<Option<Duration>> = LazyLock::new(|| {
+    let seconds = env::var("AMANE_DEVICE_IDLE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(60u64);
+
+    (seconds > 0).then(|| Duration::from_secs(seconds))
+});
+
+// lets go of the device and vello once no gpu holds them; window_gpu.rs calls this
+pub fn release_device() {
+    if let Some(shared) = SHARED.with_borrow_mut(Option::take) {
+        // what was dropped is freed when the device is polled
+        let _ = shared.device.poll(PollType::wait_indefinitely());
+        drop(shared);
+    }
+}
+
 // vello's log on stderr, for its image atlas size, when amane is built to count what vello takes
 #[cfg(feature = "vello-stats")]
 fn hear_vello() {
