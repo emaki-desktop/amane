@@ -223,7 +223,8 @@ fn resync() {
 fn publish(objects: &Objects) {
     let (adapter, devices) = objects.view();
 
-    let bluetooth = Bluetooth::read();
+    // the listener's own look, which keeps nothing watching the service
+    let bluetooth = Bluetooth::peek();
 
     if bluetooth.adapter == adapter && bluetooth.devices == devices {
         return;

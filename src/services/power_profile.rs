@@ -59,7 +59,8 @@ impl Service for PowerProfile {
             return;
         };
 
-        let changes = Bus::system().signals(PROPERTIES, "PropertiesChanged");
+        // only the daemon's object: the bus keeps every other program's changes away
+        let changes = Bus::system().signals_at(endpoint.1, PROPERTIES, "PropertiesChanged");
 
         // a change between new() and watching would otherwise wait for the next one
         refresh(endpoint);

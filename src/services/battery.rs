@@ -129,17 +129,17 @@ impl Service for Battery {
             }
         });
 
-        let changes = bus.signals("org.freedesktop.DBus.Properties", "PropertiesChanged");
+        let changes = bus.signals_at(
+            upower::ROOT,
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+        );
 
         // a change between new() and watching would otherwise wait for the next one
         refresh();
 
         for signal in changes {
-            // every program on the system bus announces here, only upower's devices count
-            if !signal.path().starts_with(upower::ROOT) {
-                continue;
-            }
-
+            // the bus sends only what's under upower's root; only its devices count
             let interface = signal.arguments().first().map(Value::text);
 
             if interface != Some(upower::UPOWER) && interface != Some(upower::DEVICE) {

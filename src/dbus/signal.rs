@@ -55,6 +55,20 @@ impl Bus {
     }
 
     /*
+     * the signals `interface`.`name` sent from objects at or under `path`, like upower's
+     * PropertiesChanged under /org/freedesktop/UPower: the bus daemon filters, so another
+     * program's PropertiesChanged never reaches this process at all
+     */
+    pub fn signals_at(&self, path: &str, interface: &str, name: &str) -> Signals {
+        let rule = rule(interface, name)
+            .path_namespace(path)
+            .expect("failed to watch signals: bad object path")
+            .build();
+
+        self.watch_signals(rule)
+    }
+
+    /*
      * every signal one service sends, by its well-known name like org.bluez,
      * in the order it sent them, so another program's PropertiesChanged never
      * wakes the loop and an object's changes never overtake its arrival
