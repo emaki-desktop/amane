@@ -26,6 +26,9 @@ serde_json = "1.0.151"
 # typed settings files (Config); zbus already builds it
 serde = { version = "1.0", features = ["derive"] }
 zbus = "5.19.0"
+# zbus's blocking pool: 1.7's idle threads never exit and wake twice a second for life;
+# 1.6's leave after half a second idle. Not used directly; the pin is the point
+blocking = "=1.6.2"
 libpulse-binding = "2.30"
 # turns svg icons into pixels once, so they draw like any other image
 resvg = { version = "0.48.1", default-features = false }
