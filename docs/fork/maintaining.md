@@ -11,27 +11,44 @@ feature, fork code in files of its own, and as few lines as can be in upstream's
 | | |
 |---|---|
 | Upstream | `https://github.com/MystiaFin/amane` (remote: `upstream`) |
-| Fork point | upstream commit `544cbfc` (tags `fork-base` and `fork-base-2026-11-07`), upstream's `main` on 2026-11-07 |
+| Fork point | upstream commit `544cbfc` (tags `fork-base` and `fork-base-2026-11-07`), upstream's `main` of 2026-10-21, taken as the base on 2026-11-07 |
 | Before that | `72e23eb` (tag `fork-base-2026-10-16`), the commit the fork was first written against; that history is kept on `ocbk-pre-tidy` |
 | Fork branch | `ocbk`; the fork's `main` mirrors upstream's `main` (fast-forward it: `git push origin upstream/main:main`) |
-| The delta | `git log --oneline fork-base..ocbk` |
+| The delta | `git log --oneline fork-base..ocbk`: 118 commits as of 2026-11-08 (`git rev-list --count fork-base..ocbk`) |
 
 The fork point is a real upstream commit, so `git log fork-base..HEAD` and `git range-diff` line
 up against genuine upstream history. `ocbk-pre-tidy` stays on origin so the revisions amane-shell
 pinned before the rebase can still be fetched.
 
-Branches: `ocbk` is the only work branch, and `main` only follows upstream.
+Branches: `ocbk` is the only work branch, `main` only follows upstream, and `ocbk-pre-tidy` is the
+history before the last rebase. Scratch branches a rebase makes (the reference merge, the
+rebased copy) are deleted once the rebase lands; nothing may refer to them.
 
 ## Upstream files stay as they were
 
 All fork documentation lives in `docs/fork/`. Upstream's mdBook (`docs/src/`) and
 `ARCHITECTURE.md` are byte-identical to `fork-base`, in every fork commit, not only at the tip;
-the fork's additions to them are in [`docs/fork/`](README.md) instead. Only two upstream-adjacent
-files change: a one-line banner in `README.md`, and the root `FORK.md` stub. Check it with:
+the fork's additions to them are in [`docs/fork/`](README.md) instead. Check it with:
 
 ```sh
 git diff --stat fork-base HEAD -- docs/src ARCHITECTURE.md   # prints nothing
 ```
+
+Outside `src/`, `examples/` and `docs/fork/`, these are the files the fork touches, and why
+(`git diff fork-base --stat -- . ':!docs/fork' ':!src' ':!examples'`):
+
+| File | Why |
+|---|---|
+| `Cargo.toml` | the fork's dependencies, its two features, `[lints]` for the whole crate, and the `[patch.crates-io]` for the vello fork |
+| `Cargo.lock` | follows `Cargo.toml` |
+| `flake.nix` | `cargoLock.outputHashes` for the vello fork, a git dependency Nix must hash |
+| `clippy.toml` | new: `unwrap` and `dbg!` allowed in tests |
+| `cli/src/call.rs`, `cli/src/main.rs` | `amane ipc call --app <id>` reaches an app by app-id through the library's `ipc_call` |
+| `cli/src/target.rs`, `cli/src/main.rs` | rustfmt's line wrapping of the usage lines, so `cargo fmt --check` passes in CI |
+| `protocols/niri-blur-shapes-v1.xml`, `niri-vibrancy-v1.xml`, `niri-secure-fill-v1.xml` | new: the niri fork's protocols the fork binds |
+| `README.md` | a one-line banner at the top saying this is a fork; the rest is upstream's |
+| `FORK.md` | new: the fork notice |
+| `.github/workflows/fork.yml` | new: the fork's CI, so upstream's `test.yml` is never edited |
 
 One upstream file is removed: `examples/text_stroke.rs` calls a `Text::stroke` that upstream
 hasn't committed, so it doesn't build upstream either
