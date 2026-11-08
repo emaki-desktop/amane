@@ -72,7 +72,7 @@ pub use logind::Logind;
 pub use media::{Media, MediaPlayer};
 pub use memory::Memory;
 pub use network::{AccessPoint, Link, Network, NetworkOperation, NetworkProfile, Wired};
-pub use notifications::{Action, Notification, Notifications, Timeout, Urgency};
+pub use notifications::{Action, Kept, Notification, Notifications, Timeout, Urgency};
 pub use outputs::Outputs;
 pub use overview::Overview;
 pub use palette::Palette;

@@ -1,7 +1,9 @@
 mod image_hint;
+mod kept;
 mod notification;
 mod server;
 
+pub use kept::Kept;
 pub use notification::{Action, Notification, Timeout, Urgency};
 
 use crate::Service;
@@ -79,6 +81,23 @@ impl Notifications {
         }
     }
 
+    /*
+     * puts back what a shell saved before it last stopped, oldest first and
+     * before anything that arrived since; each gets a new id, and has no
+     * actions, since its sender can't hear them now
+     */
+    pub fn restore(kept: Vec<Kept>) {
+        let mut restored = Vec::with_capacity(kept.len());
+
+        for kept in kept {
+            let icon_path = server::find_icon(&kept.icon, &kept.desktop_entry);
+
+            restored.push(kept.into_notification(icon_path));
+        }
+
+        Self::write().put_back(restored);
+    }
+
     // a button was pressed, pass the key from notification.actions()
     pub fn invoke(id: u32, key: &str) {
         Self::write().run_action(id, key);
@@ -140,6 +159,20 @@ impl Notifications {
         id
     }
 
+    fn put_back(&mut self, mut restored: Vec<Notification>) {
+        restored.sort_by_key(|notification| notification.received);
+
+        for notification in &mut restored {
+            notification.id = self.next_id;
+
+            self.next_id += 1;
+        }
+
+        restored.append(&mut self.list);
+
+        self.list = restored;
+    }
+
     fn close(&mut self, id: u32, reason: Reason) {
         let Some(index) = self
             .list
@@ -153,6 +186,9 @@ impl Notifications {
 
         image_hint::remove(&closed.image);
 
-        server::announce_closed(id, reason);
+        // nobody in this session sent a restored one, so nobody is told
+        if !closed.restored {
+            server::announce_closed(id, reason);
+        }
     }
 }

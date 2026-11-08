@@ -40,6 +40,9 @@ pub struct Notification {
     pub(crate) timeout: Timeout,
 
     pub(crate) received: SystemTime,
+
+    // came back from a saved history, see Notifications::restore
+    pub(crate) restored: bool,
 }
 
 // how long the sender asked for its notification to show

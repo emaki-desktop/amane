@@ -90,6 +90,8 @@ fn notify(method: &Method) {
         timeout: Timeout::from_millis(timeout.number()),
 
         received: SystemTime::now(),
+
+        restored: false,
     };
 
     let replaces_id = replaces_id.number() as u32;
@@ -130,7 +132,7 @@ fn read_actions(list: &Value) -> (Vec<Action>, bool) {
  * the icon a sender names, or its program's own icon when it names none;
  * found here on the bus thread, since the first lookup walks the themes
  */
-fn find_icon(icon: &str, desktop_entry: &str) -> Option<PathBuf> {
+pub(super) fn find_icon(icon: &str, desktop_entry: &str) -> Option<PathBuf> {
     let icon = icon.strip_prefix("file://").unwrap_or(icon);
 
     let name = if icon.is_empty() { desktop_entry } else { icon };

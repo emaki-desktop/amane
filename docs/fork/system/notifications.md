@@ -36,6 +36,9 @@ Notifications::expire(id);
 | `transient()` | `true` when it should be left out of a history once shown |
 | `resident()` | `true` when it stays open after an action |
 | `Notifications::expire(id)` | closes it with the reason *expired*, for a toast the shell is done with |
+| `kept()` | a `Kept` (re-exported as `amane::KeptNotification`): the words, pictures, sender and time, serde-ready, for a shell to save |
+| `Notifications::restore(list)` | puts saved `Kept`s back, oldest first, before anything that arrived since |
+| `restored()` | `true` for one that came back through `restore` |
 
 To hide popups after a few seconds, compare `received()` plus the timeout with the current
 time in a Service that polls, and only show the recent ones in your popup window. Keep the full
@@ -64,6 +67,16 @@ and unchanged.
 `NotificationClosed` with reason 1 (*expired*), where `dismiss` sends
 2. A sender can tell that its notification timed out, rather than being
 dismissed by the user.
+
+**Restore.** amane keeps nothing on disk; a shell that wants its
+history to outlive a restart saves `kept()` for each notification and
+hands the list to `Notifications::restore` when it starts. Each one
+gets a fresh id. It comes back without actions, a default action,
+`resident` or a timeout, since the sender that could answer them may be
+gone: clicking it dismisses it. Closing a restored one emits no
+`NotificationClosed`, since nobody in this session sent it. `Kept`
+holds the urgency as the spec's number (0, 1, 2) and `received` as
+unix seconds.
 
 **Capabilities.** The server now also lists `persistence`: notifications
 stay until they are dismissed. It does not list `body-markup`, so
