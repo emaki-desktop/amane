@@ -17,6 +17,10 @@ pub struct Notifications {
     running: bool,
 }
 
+/// How many notifications the center keeps; past it the oldest expire, so a chatty app can't
+/// grow the list, its pictures in the runtime dir and every view over it without end.
+const KEPT: usize = 200;
+
 // the numbers the spec gives each way a notification can close
 #[derive(Clone, Copy)]
 pub enum Reason {
@@ -155,6 +159,12 @@ impl Notifications {
         notification.id = id;
 
         self.list.push(notification);
+
+        // the oldest go past the cap, each with its picture, as if they expired
+        while self.list.len() > KEPT {
+            let oldest = self.list[0].id;
+            self.close(oldest, Reason::Expired);
+        }
 
         id
     }
