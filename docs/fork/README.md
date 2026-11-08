@@ -4,14 +4,19 @@ This fork of [amane](https://github.com/MystiaFin/amane) adds what the
 [amane-shell](https://github.com/098765434/amane-shell) desktop needs: xdg-popups, niri
 compositor services that follow gestures frame by frame, app windows that real apps run in,
 blur shapes and vibrancy, parley text, spring animation, and more system services. The work is
-on branch `ocbk`, on top of upstream commit `72e23eb` (tag `fork-base`).
-[maintaining.md](maintaining.md) has the rebase workflow, the commit map and the housekeeping
-rules.
+on branch `ocbk`, on top of upstream commit `544cbfc` (tag `fork-base`, upstream's `main` of
+2026-10-21).
 
 Upstream's own guide ([`docs/src/`](../src/), the mdBook) and `ARCHITECTURE.md` are left exactly
 as upstream has them; everything the fork adds is here.
 
-## Features
+This page is in two parts. [Using the fork](#using-the-fork) is for a program that depends on
+it: what it adds, how to pin it, what it reads from the environment. [Maintaining the
+fork](#maintaining-the-fork) is for whoever rebases it onto upstream.
+
+## Using the fork
+
+### What it adds
 
 | Feature | Summary | Key types | Doc | Example | Status |
 |---|---|---|---|---|---|
@@ -63,8 +68,7 @@ as upstream has them; everything the fork adds is here.
 | Subscriptions | one service following another; polling only while watched | `Service::subscribe`, `Subscription`, `Service::idle_stop` | [subscriptions](system/subscriptions.md) | — | done |
 | Launching | starting programs without panics, each in its own systemd scope, with the compositor's token when asked | `Launch`, `Launch::activated`, `LaunchError` | [apps-and-processes](system/apps-and-processes.md#each-program-in-its-own-scope) | — | done |
 | IPC | a socket per app-id, one copy per app, calling another app | `ipc_call`, `App::on_activate` | [ipc](system/ipc.md) | `examples/app_window.rs` | done |
-
-## Groups
+### Groups
 
 - **Compositor:** niri services and actions, each a `Service` like upstream's.
   [compositor/services.md](compositor/services.md).
@@ -91,12 +95,67 @@ as upstream has them; everything the fork adds is here.
   windows), [memory](internals/memory.md) (what a process holds in GPU memory and RAM, the vello
   fork's shell-sized scratch buffers, how to measure), [optimization-plan](internals/optimization-plan.md).
 
-## API cheatsheet
+### Pinning it
+
+The fork is a git dependency, pinned to a commit on `ocbk`:
+
+```toml
+[dependencies]
+amane = { git = "https://github.com/098765434/amane", rev = "<ocbk commit>", features = ["polkit-agent"] }
+```
+
+Features: `polkit-agent` (be the session's authentication agent, [polkit](system/polkit.md));
+`vello-stats` (with `AMANE_FRAMES=1`, what each vello run took of the scratch buffers,
+[memory](internals/memory.md)). Both are off by default.
+
+The fork draws through a [vello fork](https://github.com/098765434/vello) (branch `ocbk`) whose
+scratch buffers are sized for a shell and let go when idle. Cargo applies a `[patch.crates-io]`
+only from the root manifest, so a program that depends on amane repeats the two lines from
+amane's `Cargo.toml`, at the same `rev`:
+
+```toml
+[patch.crates-io]
+vello = { git = "https://github.com/098765434/vello", rev = "<vello commit>" }
+vello_encoding = { git = "https://github.com/098765434/vello", rev = "<vello commit>" }
+```
+
+A Nix build (`rustPlatform.buildRustPackage`) needs a content hash for each git dependency in
+`cargoLock.outputHashes`: one for `amane-<version>` and one for `vello-<version>`, which covers
+every crate from the same vello rev. After a `rev` bump the first build prints the expected
+`sha256-…` on mismatch; amane-shell's `flake.nix` is the model.
+
+### Environment variables
+
+What the library reads from the environment. None is needed; each is a switch for debugging
+or for comparing against the behaviour before a change.
+
+| Variable | Read in | Meaning |
+|---|---|---|
+| `AMANE_FRAMES=1` | `timing.rs` (upstream's) | print a line for every drawn frame, to see where frame time goes; the fork adds which service woke the windows and, under `vello-stats`, each vello run's scratch use |
+| `AMANE_DEBUG=1` | `wayland/popup.rs` | print each popup open and close, and an open skipped because its parent surface is not up yet |
+| `AMANE_WAKE_ALL=1` | `changes.rs` | wake the event loop for every source change, not only those a window reads |
+| `AMANE_PRESENT=mailbox` | `graphics/gpu/target.rs` | present with Mailbox instead of Fifo |
+| `AMANE_KEEP_HIDDEN=1` | `graphics/gpu.rs` | keep a hidden window's GPU memory instead of releasing it on hide |
+| `AMANE_KEEP_SPARES=1` | `graphics/gpu/pool.rs` | keep every spare texture until the window resizes, instead of ageing them out |
+| `AMANE_DEVICE_IDLE=<s>` | `graphics/gpu/shared.rs` | seconds a process whose windows are all hidden keeps its GPU device and vello; 60 by default, 0 for life |
+| `AMANE_VELLO_IDLE=<s>` | `graphics/gpu/shared.rs` | seconds vello's scratch buffers stay once no window draws with vello; 30 by default, 0 for life |
+| `AMANE_VELLO_SCRATCH=upstream` | `graphics/gpu/shared.rs` | upstream's scratch sizes instead of the vello fork's shell-sized ones, for a scene that overflowed them and came out blank |
+| `AMANE_VELLO_SHADOWS=1` | `graphics/gpu/paint/shapes.rs` | draw drop shadows with vello instead of the quads |
+| `AMANE_VELLO_SHAPES=1` | `graphics/gpu/paint/shapes.rs` | draw arcs, lines and the areas under them with vello instead of the quads |
+| `AMANE_IMAGE_CACHE_MB=<n>` | `graphics/image.rs` | the decoded-image cache's cap in MB; 64 by default |
+| `AMANE_IMAGE_FULL=1` | `graphics/image.rs` | decode every image at its own size instead of only as big as it is drawn |
+| `AMANE_NO_BLUR_SHAPES=1` | `wayland.rs` | ignore niri's blur shapes global: the blur region a compositor without shapes would give |
+| `AMANE_NO_VIBRANCY=1` | `wayland.rs` | ignore niri's vibrancy global: vibrant windows as a compositor without it would draw them |
+
+`AMANE_CONFIG=<folder>` is read by the upstream `amane` CLI (`cli/src/paths.rs`), not by the
+library: it points the CLI at another shell folder without changing its saved target.
+
+### API cheatsheet
 
 [api-cheatsheet.md](api-cheatsheet.md) has the fork's rows for upstream's
 [cheatsheet](../src/cheatsheet.md).
 
-## Moved to amane-shell
+### Moved to amane-shell
 
 Features only amane-shell and its apps use went to crates of their own in
 [amane-shell](https://github.com/098765434/amane-shell) (Phase 9 of its roadmap), so this fork
@@ -110,15 +169,32 @@ stays a generic library:
 
 They build on public amane API: `Bus`, `Service`, `run_in_order`, `Service::watched_within`,
 `Service::peek` and `ServiceError` ([errors](system/errors.md)).
-
-## Other repos
+### Other repos
 
 - **Server side:** the [niri fork's docs](https://github.com/098765434/niri/blob/ocbk/docs/fork/README.md)
   cover the protocols and IPC these features use: blur shapes, vibrancy, materials, gesture
   events, `DesktopObscured`, `MoveColumnToIndex` by window id.
 - **Main consumer:** [amane-shell's docs](https://github.com/098765434/amane-shell/blob/main/docs/README.md).
 
-## Design history
+## Maintaining the fork
+
+The fork is never upstreamed; it is kept cheap to rebase instead. One commit, or a few, per
+feature; fork code in files of its own; as few lines as can be in upstream's files; and
+upstream's `docs/src/` and `ARCHITECTURE.md` byte-identical to `fork-base` in every commit.
+[maintaining.md](maintaining.md) has the rebase routine, where a rebase conflicts, the commit
+map, the lints and the housekeeping rules.
+
+### Branches and tags
+
+| | |
+|---|---|
+| `ocbk` | the work branch: the fork's commits over `fork-base` (`git log --oneline fork-base..ocbk`) |
+| `main` | mirrors upstream's `main`, nothing of the fork's |
+| `ocbk-pre-tidy` | the history before the last rebase, kept on origin so revisions pinned before it can still be fetched |
+| `fork-base` | the upstream commit the fork sits on: `544cbfc`, upstream's `main` of 2026-10-21 |
+| `fork-base-<date>` | each base the fork has sat on: `fork-base-2026-10-16` (`72e23eb`, the first) and `fork-base-2026-11-07` (`544cbfc`, the current) |
+
+### Design history
 
 Implemented specs, kept for their reasoning:
 
