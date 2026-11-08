@@ -138,10 +138,14 @@ impl WaylandState {
      * polling while one is open, and stops when none is (services::store)
      */
     pub fn publish_watched(&self) {
-        let watched = self
+        let read: std::collections::HashSet<changes::Source> = self
             .windows
             .iter()
-            .flat_map(|window| &window.reads)
+            .flat_map(|window| window.reads.iter().copied())
+            .collect();
+
+        let watched = read
+            .iter()
             .filter_map(|source| match source {
                 changes::Source::Service(id) => Some(*id),
                 _ => None,
@@ -149,6 +153,7 @@ impl WaylandState {
             .collect();
 
         crate::services::store::set_watched(watched);
+        changes::set_read_by_windows(read);
     }
 
     // only windows that read a service that changed draw again

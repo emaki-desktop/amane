@@ -39,6 +39,38 @@ struct Changes {
     everything: bool,
 }
 
+/*
+ * what some window's last frame read, hidden windows included (a hidden view still runs
+ * when what it read changes, as the shell's OSD does to notice a change). A change to a
+ * source no window reads wakes nobody; it is still kept, for the next frame that looks.
+ * None until the event loop first says, so early changes all wake it.
+ */
+static READ_BY_WINDOWS: Mutex<Option<HashSet<Source>>> = Mutex::new(None);
+
+// the event loop's list of what its windows' last frames read, after each dispatch
+pub fn set_read_by_windows(read: HashSet<Source>) {
+    let mut known = READ_BY_WINDOWS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if known.as_ref() != Some(&read) {
+        *known = Some(read);
+    }
+}
+
+fn read_by_a_window(source: &Source) -> bool {
+    // AMANE_WAKE_ALL=1 wakes the loop for every change, as before
+    static WAKE_ALL: OnceLock<bool> = OnceLock::new();
+    if *WAKE_ALL.get_or_init(|| std::env::var_os("AMANE_WAKE_ALL").is_some_and(|v| v == "1")) {
+        return true;
+    }
+
+    READ_BY_WINDOWS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .is_none_or(|read| read.contains(source))
+}
+
 // what the window being drawn right now has read
 thread_local! {
     static READ: RefCell<HashSet<Source>> = RefCell::new(HashSet::new());
@@ -98,7 +130,8 @@ pub fn mark(service: TypeId) {
     mark_source(Source::Service(service));
 }
 
-// only the windows that read this source are drawn again
+// only the windows that read this source are drawn again; when none reads it, the event
+// loop isn't woken at all (a terminal's title spinner with no window showing titles)
 pub fn mark_source(source: Source) {
     let mut changes = CHANGED.lock().unwrap_or_else(PoisonError::into_inner);
 
@@ -109,7 +142,9 @@ pub fn mark_source(source: Source) {
 
     drop(changes);
 
-    ping();
+    if read_by_a_window(&source) {
+        ping();
+    }
 }
 
 // none means every window should draw
