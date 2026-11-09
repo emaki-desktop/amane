@@ -6,6 +6,7 @@
 
 use crate::{Argument, Bus, ErrorKind, ServiceError, Value};
 
+use super::details::{self, Ipv4Settings};
 use super::manager::{self, NAME, PATH};
 
 pub(super) const SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
@@ -21,7 +22,7 @@ const UNAVAILABLE: f64 = 20.0;
 const ACTIVATED: f64 = 100.0;
 
 /// A saved connection profile.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Profile {
     /// NetworkManager's id for it, the same across renames.
     pub uuid: String,
@@ -34,6 +35,17 @@ pub struct Profile {
     pub wifi_mode: Option<String>,
     /// Whether it's up now.
     pub active: bool,
+    /// A Wi-Fi profile's network name.
+    pub ssid: Option<String>,
+    /// Whether NetworkManager brings it up by itself when it can.
+    pub autoconnect: bool,
+    /// When it was last up, in seconds since 1970; 0 for never.
+    pub last_used: u64,
+    /// Whether the system's configuration writes it at boot (NixOS's
+    /// `ensureProfiles`, say), so forgetting or changing it here wouldn't last.
+    pub declared: bool,
+    /// Its IPv4 settings as saved.
+    pub ipv4: Ipv4Settings,
 }
 
 impl Profile {
@@ -67,6 +79,11 @@ pub(super) struct Saved {
     pub name: String,
     pub kind: String,
     pub wifi_mode: Option<String>,
+    pub ssid: Option<String>,
+    pub autoconnect: bool,
+    pub last_used: u64,
+    pub declared: bool,
+    pub ipv4: Ipv4Settings,
 }
 
 /// Every saved profile's settings.
@@ -77,7 +94,11 @@ pub(super) fn saved() -> Vec<Saved> {
         .iter()
         .filter_map(|path| {
             let settings = bus.call(NAME, path.text(), CONNECTION, "GetSettings", &[]);
-            parse_settings(&settings)
+            let file = bus.property(NAME, path.text(), CONNECTION, "Filename");
+            parse_settings(&settings).map(|saved| Saved {
+                declared: details::declared(file.text()),
+                ..saved
+            })
         })
         .collect()
 }
@@ -88,12 +109,21 @@ pub(super) fn parse_settings(settings: &Value) -> Option<Saved> {
     if uuid.is_empty() {
         return None;
     }
-    let mode = settings.get("802-11-wireless").get("mode").text();
+    let wireless = settings.get("802-11-wireless");
+    let mode = wireless.get("mode").text();
+    let ssid = super::ssid(wireless.get("ssid"));
+    // NetworkManager leaves defaults out: autoconnect is on unless it says off
+    let autoconnect = !matches!(connection.get("autoconnect"), Value::Bool(false));
     Some(Saved {
         uuid: uuid.to_owned(),
         name: connection.get("id").text().to_owned(),
         kind: connection.get("type").text().to_owned(),
         wifi_mode: (!mode.is_empty()).then(|| mode.to_owned()),
+        ssid: (!ssid.is_empty()).then_some(ssid),
+        autoconnect,
+        last_used: connection.get("timestamp").number() as u64,
+        declared: false,
+        ipv4: details::ipv4_settings(settings.get("ipv4")),
     })
 }
 
@@ -121,6 +151,11 @@ pub(super) fn profiles(saved: &[Saved], active: &[(String, String)]) -> Vec<Prof
             kind: saved.kind.clone(),
             wifi_mode: saved.wifi_mode.clone(),
             active: active.iter().any(|(uuid, _)| *uuid == saved.uuid),
+            ssid: saved.ssid.clone(),
+            autoconnect: saved.autoconnect,
+            last_used: saved.last_used,
+            declared: saved.declared,
+            ipv4: saved.ipv4.clone(),
         })
         .collect()
 }
@@ -310,6 +345,43 @@ mod tests {
         assert_eq!(hotspots, ["Hotspot"]);
 
         assert!(parse_settings(&map(&[])).is_none(), "no uuid, no profile");
+    }
+
+    #[test]
+    fn a_wifi_profile_reads_its_network_and_when_it_was_used() {
+        let ssid = Value::List(
+            b"Cafe"
+                .iter()
+                .map(|b| Value::Number(f64::from(*b)))
+                .collect(),
+        );
+        let settings = map(&[
+            (
+                "connection",
+                map(&[
+                    ("id", text("Cafe")),
+                    ("uuid", text("6666")),
+                    ("type", text("802-11-wireless")),
+                    ("autoconnect", Value::Bool(false)),
+                    ("timestamp", Value::Number(1_700_000_000.0)),
+                ]),
+            ),
+            ("802-11-wireless", map(&[("ssid", ssid)])),
+            ("ipv4", map(&[("method", text("auto"))])),
+        ]);
+        let saved = parse_settings(&settings).expect("a profile");
+        assert_eq!(saved.ssid.as_deref(), Some("Cafe"));
+        assert!(!saved.autoconnect);
+        assert_eq!(saved.last_used, 1_700_000_000);
+        assert_eq!(saved.ipv4.method, "auto");
+
+        let plain = parse_settings(&settings_of("Work", "3333", "vpn")).expect("a profile");
+        assert!(plain.autoconnect, "on unless it says off");
+        assert_eq!(plain.ssid, None);
+    }
+
+    fn settings_of(id: &str, uuid: &str, kind: &str) -> Value {
+        settings(id, uuid, kind, None)
     }
 
     #[test]

@@ -62,7 +62,7 @@ fork](#maintaining-the-fork) is for whoever rebases it onto upstream.
 | Clipboard watcher | the selection as it changes, from any program, for a history | `ClipboardWatcher` | [clipboard-watcher](system/clipboard-watcher.md) | — | done |
 | Service errors | one failure type for the fork's services, and the helpers a program's own services share | `ServiceError`, `ErrorKind`, `run_in_order`, `Service::watched_within`, `Service::peek` | [errors](system/errors.md) | — | done |
 | Media | players followed by their MPRIS signals instead of a poll; the position worked out from the last reading | `Media`, `MediaPlayer::position` | [media](system/media.md) | — | done |
-| Network | NetworkManager's signals; VPN, WireGuard, hotspot and wired profiles | `Network::profiles`, `NetworkProfile`, `Wired` | [network](system/network.md) | — | done |
+| Network | NetworkManager's signals; VPN, WireGuard, hotspot and wired profiles; profile IPv4 settings, connection details, forget, hidden networks | `Network::profiles`, `NetworkProfile`, `Wired`, `ConnectionDetails`, `Ipv4Settings` | [network](system/network.md) | — | done |
 | Lock keys | Caps Lock and Num Lock | `LockKeys` | [lock-keys](system/lock-keys.md) | — | done |
 | Timers | jobs and redraws on the event loop at a time | `Timer`, `TimerHandle`, `redraw_after` | [timer](system/timer.md) | — | done |
 | Subscriptions | one service following another; polling only while watched | `Service::subscribe`, `Subscription`, `Service::idle_stop` | [subscriptions](system/subscriptions.md) | — | done |

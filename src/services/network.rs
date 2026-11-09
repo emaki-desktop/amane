@@ -1,5 +1,6 @@
 mod access_point;
 mod connections;
+mod details;
 mod link;
 mod manager;
 mod profile;
@@ -18,6 +19,7 @@ use crate::{Bus, ErrorKind, Service, ServiceError, Value};
 
 pub use access_point::AccessPoint;
 pub use connections::{Profile as NetworkProfile, Wired};
+pub use details::{ConnectionDetails, Ipv4Settings};
 pub use link::Link;
 
 // a burst of signals is read as one change: the refetch waits until they pause this long
@@ -330,9 +332,40 @@ impl Network {
 
         worker::run(move || {
             begin(&ssid, true);
-            let result = join(&ssid, password.as_deref());
+            let result = join(&ssid, password.as_deref(), false);
             finish(&ssid, result);
         });
+    }
+
+    /// Joins a network that doesn't announce its name, saving a profile that
+    /// looks for it; a failure is under [`failure`](Self::failure) by `ssid`.
+    pub fn connect_hidden(ssid: &str, password: Option<&str>) {
+        let ssid = String::from(ssid);
+        let password = password.map(String::from);
+
+        worker::run(move || {
+            begin(&ssid, true);
+            let result = join(&ssid, password.as_deref(), true);
+            finish(&ssid, result);
+        });
+    }
+
+    /// Deletes the saved profile with `uuid`, password and all; a failure,
+    /// like a profile the system's configuration declares, is under
+    /// [`failure`](Self::failure) by `uuid`.
+    pub fn forget(uuid: &str) {
+        let uuid = uuid.to_owned();
+        worker::run(move || {
+            begin(&uuid, false);
+            finish(&uuid, details::forget(&uuid));
+        });
+    }
+
+    /// The connection with `uuid` as it is now (its addresses, gateway, DNS
+    /// and device), or none while it's down. It asks NetworkManager there
+    /// and then, so call it off the UI thread.
+    pub fn details(uuid: &str) -> Option<ConnectionDetails> {
+        details::read(uuid)
     }
 
     pub fn disconnect() {
@@ -382,16 +415,16 @@ impl Network {
  * a saved profile already holds its password, so it is joined as it is;
  * otherwise networkmanager saves a new one, password included
  */
-fn join(ssid: &str, password: Option<&str>) -> Result<(), ServiceError> {
+fn join(ssid: &str, password: Option<&str>, hidden: bool) -> Result<(), ServiceError> {
     let Some(device) = wifi::device() else {
         return Err(ServiceError::new(ErrorKind::NotReady, "no Wi-Fi device"));
     };
 
-    if let Some(profile) = profile::find(ssid) {
+    if !hidden && let Some(profile) = profile::find(ssid) {
         return Ok(manager::activate(&profile, &device)?);
     }
 
-    let settings = profile::settings(ssid, password);
+    let settings = profile::settings(ssid, password, hidden);
 
     Ok(manager::add_and_activate(settings, &device)?)
 }

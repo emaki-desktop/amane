@@ -60,7 +60,7 @@ fn wifi_profiles() -> Vec<(String, String)> {
 }
 
 // only what networkmanager cannot work out itself, it fills in the rest
-pub fn settings(name: &str, password: Option<&str>) -> Argument {
+pub fn settings(name: &str, password: Option<&str>, hidden: bool) -> Argument {
     let mut connection = BTreeMap::new();
 
     connection.insert(String::from("id"), Argument::from(name));
@@ -72,6 +72,11 @@ pub fn settings(name: &str, password: Option<&str>) -> Argument {
         String::from("ssid"),
         Argument::Bytes(name.as_bytes().to_vec()),
     );
+
+    // a network that doesn't announce its name is probed for by it
+    if hidden {
+        wireless.insert(String::from("hidden"), Argument::from(true));
+    }
 
     let mut groups = BTreeMap::new();
 
