@@ -49,6 +49,7 @@ Outside `src/`, `examples/` and `docs/fork/`, these are the files the fork touch
 | `README.md` | a one-line banner at the top saying this is a fork; the rest is upstream's |
 | `FORK.md` | new: the fork notice |
 | `.github/workflows/fork.yml` | new: the fork's CI, so upstream's `test.yml` is never edited |
+| `deny.toml` | new: what `cargo deny check` in `fork.yml` allows (advisories, licences, sources) |
 
 One upstream file is removed: `examples/text_stroke.rs` calls a `Text::stroke` that upstream
 hasn't committed, so it doesn't build upstream either
@@ -115,7 +116,8 @@ The fork's own files hold themselves to more: each module file the fork added st
 #![warn(clippy::unwrap_used, clippy::dbg_macro, clippy::todo)]
 ```
 
-and its submodules inherit it. Give a new fork module the same line. `clippy.toml` allows
+and its submodules inherit it. Give a new fork module the same line; one with `unsafe` blocks adds
+`clippy::undocumented_unsafe_blocks` to it. `clippy.toml` allows
 `unwrap` and `dbg!` in tests. CI (`.github/workflows/fork.yml`) runs clippy with `-D warnings`.
 
 ## Commit map
@@ -180,6 +182,7 @@ and its submodules inherit it. Give a new fork module the same line. `clippy.tom
 | Idle RAM: a window's `Gpu` made at its first frame and all gone when none shows; a source no window reads doesn't wake the loop; each niri listener gets only its events; the allocator trims after a hide or an image let go; `blocking` pinned at 1.6.2 so zbus's idle threads leave | `509d6ee`, `a3fde99`, `b5bed62`, `4a9d1fd`, `5117639` | `src/graphics/gpu/{window_gpu,shared}.rs`, `src/changes.rs`, `src/compositor/niri/{client,listen,stream}.rs`, `src/allocator.rs`, `Cargo.toml`; [memory](internals/memory.md) |
 | Images decoded as big as they're drawn, under a byte cap (`AMANE_IMAGE_CACHE_MB`, `AMANE_IMAGE_FULL`), on two threads | `4273783` | `src/graphics/image.rs`, `src/graphics/renderer.rs`, `src/style/image.rs` |
 | `Bus::signals_at`: one object's signals alone | `0551b16` | `src/dbus/signal.rs`, the services that watch one object |
+| Hardening: the polkit caller shown and only polkitd heard, PAM's user and wiped answers, IPC calls read off the loop with limits, `Exec` filled as argument lists, caps on images, notifications, tray items, pastes and drops, users through NSS, `cargo deny` | `a9f7fa8` | `src/services/polkit/{agent,request}.rs`, `src/services/pam.rs`, `src/services/pam/{config,native}.rs`, `src/services/users.rs`, `src/wayland/socket.rs`, `src/ipc.rs`, `src/services/apps/{exec,desktop_app}.rs`, `src/graphics/image.rs`, `src/graphics/image/svg.rs`, `src/services/notifications/{image_hint,server}.rs`, `src/services/tray/icon.rs`, `src/clipboard.rs`, `src/wayland/clipboard.rs`, `src/wayland/dropped/drag.rs`, `src/services/clipboard_watcher.rs`, `deny.toml`, `.github/workflows/fork.yml`; [hardening](system/hardening.md) |
 | CI, lints and formatting, the terms check | `6ac64aa`, `0439e96` | `.github/workflows/fork.yml`, `Cargo.toml` (`[lints]`), `clippy.toml`, the fork's files |
 | Fork docs and housekeeping | `c187555`, `2a02010`, `9da2da0`, `85b7605`, `50eae0b`, and this page | `FORK.md`, `docs/fork/` |
 
