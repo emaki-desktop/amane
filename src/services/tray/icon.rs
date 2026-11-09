@@ -31,12 +31,16 @@ pub fn find(name: &str, pixmaps: &Value, theme_path: &str, size: u32) -> Option<
 
 // an icon an item keeps in a folder of its own, like Steam's or an AppImage's
 fn in_folder(name: &str, folder: &str) -> Option<PathBuf> {
-    if folder.is_empty() {
+    // a name, never a path: one with a / in it would reach out of the folder
+    if folder.is_empty() || name.is_empty() || name.contains('/') || name.starts_with('.') {
         return None;
     }
 
     find_in(Path::new(folder), name, 4)
 }
+
+// how many entries of each folder are looked in for an item's icon
+const FOLDERS_LOOKED_IN: usize = 64;
 
 fn find_in(folder: &Path, name: &str, depth: u32) -> Option<PathBuf> {
     for extension in ["svg", "png"] {
@@ -52,9 +56,11 @@ fn find_in(folder: &Path, name: &str, depth: u32) -> Option<PathBuf> {
     }
 
     // the biggest sizes sort last by name rarely, so any match will do
+    // an item names its folder: one like / mustn't have the whole disk walked
     let mut folders: Vec<PathBuf> = fs::read_dir(folder)
         .ok()?
         .flatten()
+        .take(FOLDERS_LOOKED_IN)
         .map(|entry| entry.path())
         .filter(|path| path.is_dir())
         .collect();
@@ -83,8 +89,15 @@ fn best(pixmaps: &Value, size: u32) -> Option<(u32, u32, Vec<u8>)> {
             let (width, height) = (width.number() as u32, height.number() as u32);
             let bytes = bytes.list();
 
-            (width > 0 && height > 0 && bytes.len() == (width * height * 4) as usize)
-                .then_some((width, height, bytes))
+            // checked, so a sender's sizes can't wrap round to the bytes it sent
+            let expected = (width as usize)
+                .checked_mul(height as usize)
+                .and_then(|pixels| pixels.checked_mul(4));
+            (width > 0
+                && height > 0
+                && crate::graphics::image::fits(width, height)
+                && expected == Some(bytes.len()))
+            .then_some((width, height, bytes))
         })
         .collect();
 

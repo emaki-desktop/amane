@@ -19,7 +19,7 @@ New functions, next to upstream's `name`, `description`, `exec`, `icon`, `icon_p
 | `actions()` | its desktop actions, other ways to start it like "New Private Window" (see below) |
 | `mime_types()` | the kinds of file it says it opens (its `MimeType`), like `["text/markdown", "text/plain"]` |
 | `opens(file)` | whether it opens `file`, by the kind of file its name says it is |
-| `commands_with(files)` | the command lines that open `files` with it (see below) |
+| `commands_with(files)` | the commands, as argument lists, that open `files` with it (see below) |
 | `launch_with(files)` | starts it on `files`, without waiting |
 
 Each `DesktopAction` is one of the `[Desktop Action …]` sections the entry's `Actions` lists, in
@@ -36,7 +36,7 @@ for action in app.actions() {
 
 `opens(file)` finds the file's kind from its name in the shared MIME database (`mime/globs2` in the XDG data dirs; a folder is `inode/directory`), and says yes when the app lists that kind or one it comes from (`mime/subclasses`; every `text/…` kind is `text/plain` too). An app with no `MimeType` opens nothing.
 
-`commands_with(files)` fills the files into the entry's `Exec`: `%F` and `%U` take them all, as paths and as `file://` links, while `%f` and `%u` take one, so there's a command per file. Every file is quoted for the shell. An `Exec` with none of them opens no files, and you get the plain command. `launch_with(files)` runs them. To have the compositor run them instead, hand each to `Windows::spawn(vec!["sh".into(), "-c".into(), command])`.
+`commands_with(files)` gives argument lists (`Vec<Vec<String>>`), not shell lines. The entry's `Exec` is split into arguments as the Desktop Entry spec says: spaces between them, double quotes around one, with `\` taking the next letter as it is inside quotes. Then the files are filled in: `%F` and `%U` take them all, as paths and as `file://` links, each an argument of its own, while `%f` and `%u` take one, so there's a command per file; a code inside an argument (`--file=%f`) is one file in its place. A code inside quotes isn't filled in, as the spec has none there. So a file is never text a shell reads: one named `$(rm -rf ~).txt` stays only a name, even for an `Exec` that is `sh -c "…"`. An `Exec` with no codes opens no files, and you get the plain command; one that can't be split (a quote left open) gives no command, and says so on stderr. `launch_with(files)` runs them with `Launch::argv`; with no files it's `launch()`. To have the compositor run them instead, hand each list to `Windows::spawn(command)`.
 
 ```rust,ignore
 let file = PathBuf::from("/home/me/notes.md");
@@ -108,6 +108,8 @@ that can't run. Code: `src/launch.rs`; commit `b2f770a`.
 ## Design / internals
 
 - The MIME lookup is `src/services/apps/mime.rs`, read from the shared-mime-info files.
+- `services/apps/exec.rs` has the spec's tokenizer (`split`) and the filling (`fill`); its tests try
+  thousands of random `Exec` lines and file names.
 - Commits: `0ebcfd2` (categories, keywords), `d9d3d46` (actions), `7f48e10` (`Apps::find_icon`), `c029184` (MIME, `opens`, `launch_with`), `3c3d56b` (`id`), `82337f2` (`spawn_activated`), `b2f770a` (`Launch`, scopes).
 
 ## Apps rescans

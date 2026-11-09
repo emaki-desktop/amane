@@ -63,4 +63,12 @@ let _ = amane::ipc_call("amane", "reload", &[]);
 - Before any window opens, `run()` checks whether the app's socket already answers. If it does,
   it hands the launch to that running copy (`hand_over` in `src/app.rs`, an `activate` call
   carrying the activation token, then argv) and returns. So only one copy of each app-id runs.
+- **Reading a call.** The socket is `0600` in the runtime directory, and a connection is
+  answered only when `SO_PEERCRED` says it's this user's. Each call is read on a short-lived
+  `amane-ipc` thread, never on the event loop, so a client that sends a byte a second, or never
+  stops, can't hold up drawing: the whole call must come within 2 seconds (each read waits only
+  as long as is left), be at most 64 KiB and 256 arguments, and at most 8 are read at once
+  (more are dropped unread). The call read goes back to the loop through a channel and is
+  answered there, as handlers expect; a client has a second to take the answer
+  (`src/wayland/socket.rs`, `IpcCall::read_within` in `src/ipc.rs`).
 - History: phase 6 of [App windows](../windows/app-windows.md#phase-6-apps-as-separate-processes-done) (`82337f2`).

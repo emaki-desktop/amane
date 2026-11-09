@@ -4,13 +4,14 @@ mod svg;
 
 use std::any::TypeId;
 use std::collections::{HashMap, VecDeque};
-use std::io::Cursor;
+use std::io::{Cursor, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use png::{ColorType, Decoder, Transformations};
+use png::{ColorType, Decoder, Limits, Transformations};
 use zune_jpeg::JpegDecoder;
 use zune_jpeg::zune_core::bytestream::ZCursor;
 use zune_jpeg::zune_core::colorspace::ColorSpace;
@@ -21,6 +22,29 @@ use crate::changes;
 const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
 const JPEG_SIGNATURE: [u8; 3] = [0xFF, 0xD8, 0xFF];
+
+/*
+ * images come from other programs too (a notification's icon, a tray item's, an album's art
+ * fetched from the web), so a file is read only up to a size, and an image only decoded up to
+ * a size, checked from its header before anything is allocated; an 8K wallpaper still fits
+ */
+pub(crate) const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
+// a side and a whole image, in pixels: 72 MP is 288 MB of RGBA
+pub(crate) const MAX_SIDE: u32 = 16384;
+pub(crate) const MAX_PIXELS: u64 = 72_000_000;
+
+// svg is text, and an icon's is a few kB; a bigger one is mostly a way to make the parser work
+const MAX_SVG_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Whether an image this big may be decoded.
+pub(crate) fn fits(width: u32, height: u32) -> bool {
+    width > 0
+        && height > 0
+        && width <= MAX_SIDE
+        && height <= MAX_SIDE
+        && u64::from(width) * u64::from(height) <= MAX_PIXELS
+}
 
 // rgba pixels with plain, not premultiplied, alpha
 pub struct Bitmap {
@@ -328,7 +352,7 @@ pub fn forget(image: &Arc<Bitmap>) {
 
 // none for a file that can't be read or decoded, like one still being written
 pub fn read(path: &Path) -> Option<Bitmap> {
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = read_file(path)?;
 
     // the file's first bytes say its format, whatever its name ends in
     if bytes.starts_with(&PNG_SIGNATURE) {
@@ -343,6 +367,10 @@ pub fn read(path: &Path) -> Option<Bitmap> {
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
     {
+        if bytes.len() as u64 > MAX_SVG_BYTES {
+            return None;
+        }
+
         return svg::rasterize(&bytes);
     }
 
@@ -350,13 +378,50 @@ pub fn read(path: &Path) -> Option<Bitmap> {
     None
 }
 
+/*
+ * a regular file's bytes, up to MAX_FILE_BYTES: never a device like /dev/zero, which never
+ * ends, or a fifo, which would hold a decoder thread for good (opened without blocking, so
+ * even opening one can't)
+ */
+fn read_file(path: &Path) -> Option<Vec<u8>> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path)
+        .ok()?;
+
+    let metadata = file.metadata().ok()?;
+
+    if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
+        return None;
+    }
+
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+
+    // a file still growing stops at the limit all the same
+    file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes).ok()?;
+
+    (bytes.len() as u64 <= MAX_FILE_BYTES).then_some(bytes)
+}
+
 fn decode_png(bytes: &[u8]) -> Option<Bitmap> {
-    let mut decoder = Decoder::new(Cursor::new(bytes));
+    // the decoder's own allocations, beside the frame below, which its limit doesn't count
+    let limits = Limits {
+        bytes: MAX_FILE_BYTES as usize,
+    };
+
+    let mut decoder = Decoder::new_with_limits(Cursor::new(bytes), limits);
 
     // palettes, tiny bit depths and 16 bit samples all turn into plain 8 bit channels
     decoder.set_transformations(Transformations::normalize_to_color8());
 
     let mut reader = decoder.read_info().ok()?;
+
+    // the header says how big: a few bytes may claim 100000 by 100000
+    let info = reader.info();
+    if !fits(info.width, info.height) {
+        return None;
+    }
 
     let size = reader.output_buffer_size()?;
 
@@ -405,9 +470,20 @@ fn expand(pixels: &[u8], color_type: ColorType) -> Vec<u8> {
 
 fn decode_jpeg(bytes: &[u8]) -> Option<Bitmap> {
     // a bitmap has four channels, jpeg only stores three
-    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::RGBA);
+    let options = DecoderOptions::default()
+        .jpeg_set_out_colorspace(ColorSpace::RGBA)
+        .set_max_width(MAX_SIDE as usize)
+        .set_max_height(MAX_SIDE as usize);
 
     let mut decoder = JpegDecoder::new_with_options(ZCursor::new(bytes), options);
+
+    // the header first, so a huge image is refused before its pixels are allocated
+    decoder.decode_headers().ok()?;
+
+    let (width, height) = decoder.dimensions()?;
+    if !fits(u32::try_from(width).ok()?, u32::try_from(height).ok()?) {
+        return None;
+    }
 
     let pixels = decoder.decode().ok()?;
 
@@ -420,4 +496,162 @@ fn decode_jpeg(bytes: &[u8]) -> Option<Bitmap> {
     };
 
     Some(bitmap)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    use super::*;
+
+    // a file of its own for this test, removed when dropped
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let folder =
+                std::env::temp_dir().join(format!("amane-image-test-{}", std::process::id()));
+            std::fs::create_dir_all(&folder).expect("failed to make the test folder");
+            Self(folder.join(name))
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    #[test]
+    fn devices_are_never_read() {
+        assert!(read(Path::new("/dev/zero")).is_none());
+        assert!(read(Path::new("/dev/urandom")).is_none());
+    }
+
+    #[test]
+    fn a_fifo_neither_blocks_nor_reads() {
+        let fifo = Scratch::new("fifo.png");
+        let name = std::ffi::CString::new(fifo.0.as_os_str().as_encoded_bytes()).expect("a path");
+        // SAFETY: a valid C string and a mode
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+
+        // would hang forever if opening or reading blocked
+        assert!(read(&fifo.0).is_none());
+    }
+
+    #[test]
+    fn a_png_header_claiming_a_huge_image_is_refused_before_allocating() {
+        // a valid header for 100000 by 100000 rgba, and no pixels
+        let mut png = PNG_SIGNATURE.to_vec();
+        let mut ihdr = b"IHDR".to_vec();
+        ihdr.extend(100_000u32.to_be_bytes());
+        ihdr.extend(100_000u32.to_be_bytes());
+        ihdr.extend([8, 6, 0, 0, 0]);
+        png.extend(13u32.to_be_bytes());
+        png.extend(&ihdr);
+        png.extend(crc32(&ihdr).to_be_bytes());
+
+        assert!(decode_png(&png).is_none());
+    }
+
+    #[test]
+    fn an_svg_cant_pull_in_another_file() {
+        // a real png, which an svg's <image> names
+        let png = Scratch::new("pixel.png");
+        let mut encoder = png::Encoder::new(
+            std::fs::File::create(&png.0).expect("failed to make the png"),
+            1,
+            1,
+        );
+        encoder.set_color(png::ColorType::Rgba);
+        encoder
+            .write_header()
+            .and_then(|mut writer| writer.write_image_data(&[255, 0, 0, 255]))
+            .expect("failed to write the png");
+        let href = png.0.to_string_lossy();
+
+        // usvg's own resolver reads it, whatever file it is
+        let default = resvg::usvg::Options::default();
+        assert!((default.image_href_resolver.resolve_string)(&href, &default).is_some());
+
+        // ours never opens it
+        let ours = svg::options();
+        assert!((ours.image_href_resolver.resolve_string)(&href, &ours).is_none());
+
+        // and the svg naming it still draws, without it
+        let svg = Scratch::new("outside.svg");
+        let text = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="4" height="4"><image width="4" height="4" xlink:href="{href}"/></svg>"#
+        );
+        std::fs::File::create(&svg.0)
+            .and_then(|mut file| file.write_all(text.as_bytes()))
+            .expect("failed to write the svg");
+        assert!(read(&svg.0).is_some());
+    }
+
+    // a small seeded generator, so a failure is the same every run
+    struct Noise(u64);
+
+    impl Noise {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+    }
+
+    #[test]
+    fn any_png_header_decodes_or_is_refused_quickly() {
+        let mut noise = Noise(0xA076_1D64_78BD_642F);
+        for _ in 0..5_000 {
+            let width = [1, 7, 4096, 16385, 100_000, u32::MAX][noise.below(6) as usize];
+            let height = [1, 9, 4096, 16385, 100_000, u32::MAX][noise.below(6) as usize];
+            let depth = [1u8, 2, 4, 8, 16, 3][noise.below(6) as usize];
+            let color = [0u8, 2, 3, 4, 6, 5][noise.below(6) as usize];
+            let mut png = PNG_SIGNATURE.to_vec();
+            let mut ihdr = b"IHDR".to_vec();
+            ihdr.extend(width.to_be_bytes());
+            ihdr.extend(height.to_be_bytes());
+            ihdr.extend([depth, color, 0, 0, 0]);
+            png.extend(13u32.to_be_bytes());
+            png.extend(&ihdr);
+            png.extend(crc32(&ihdr).to_be_bytes());
+            // and some noise after, as the rest of a file
+            png.extend((0..noise.below(64)).map(|_| noise.next() as u8));
+
+            if let Some(bitmap) = decode_png(&png) {
+                assert!(fits(bitmap.width, bitmap.height));
+            }
+        }
+    }
+
+    #[test]
+    fn sizes_that_fit() {
+        assert!(fits(7680, 4320));
+        assert!(!fits(0, 10));
+        assert!(!fits(MAX_SIDE + 1, 1));
+        assert!(!fits(MAX_SIDE, MAX_SIDE));
+    }
+
+    // png's chunk checksum, for the hand-made header above
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for &byte in bytes {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
 }

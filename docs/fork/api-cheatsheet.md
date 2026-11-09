@@ -50,7 +50,7 @@ changes. Each section matches a section there.
 | `Battery` | adds `state`, `on_ac`, `warning`, `time_to_empty`, `time_to_full`, `icon`, `peripherals` | |
 | `PowerProfile` | `present`, `active`, `available`, `degraded` | `set` |
 | `Idle` | `is_idle`, `crossed`, `levels`, `inhibited`, `inhibitors`, `running` | `set_levels` |
-| `Apps` | each `DesktopApp` adds `id`, `categories`, `keywords`, `actions`, `mime_types`, `opens(file)`, `commands_with(files)` | `launch_with(files)` on each `DesktopApp` |
+| `Apps` | each `DesktopApp` adds `id`, `categories`, `keywords`, `actions`, `mime_types`, `opens(file)`, `commands_with(files)` (argument lists, files never through a shell) | `launch_with(files)` on each `DesktopApp` |
 | `Appearance` | `present`, `scheme`, `prefers_dark`, `accent`, `high_contrast`, `reduced_motion` | |
 | `Audio` | adds `outputs`, `inputs` (each an `AudioDevice`: `name`, `description`, `kind`, `default`), `output_kind`, `input_kind`, `streams` (each an `AudioStream`: `index`, `app`, `icon`, `binary`, `media`, `volume`, `muted`, `paused`), `balance` | adds `set_output(name)`, `set_input(name)`, `set_balance(b)`, `set_stream_volume(index, v)`, `set_stream_muted(index, m)`, `toggle_stream_mute(index)` |
 | `AudioLevel` (new) | `peak` (0 to 1), recorded only while read | — |

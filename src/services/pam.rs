@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 
+use zeroize::Zeroizing;
+
 use crate::Service;
 
 pub use config::PamConfig;
@@ -21,7 +23,8 @@ pub use types::{PamError, PamMessage, PamMessageKind, PamResult};
 pub struct Pam {
     session: Option<Arc<Session>>,
     messages: Vec<PamMessage>,
-    prompt: Option<(u64, Sender<String>)>,
+    // the answer goes back wiped once used, as it's usually a password
+    prompt: Option<(u64, Sender<Zeroizing<String>>)>,
     result: Option<PamResult>,
     next_message: u64,
 }
@@ -97,7 +100,7 @@ impl Pam {
         }
         let (_, sender) = pam.prompt.take().ok_or(PamError::NoPrompt)?;
         sender
-            .send(String::from(response))
+            .send(Zeroizing::new(String::from(response)))
             .map_err(|_| PamError::NoPrompt)
     }
 
@@ -126,6 +129,8 @@ pub(super) fn start(
     completed: Option<Completion>,
 ) -> Result<(), PamError> {
     let config = config.prepare()?;
+    // wiped when the attempt is over
+    let password = password.map(Zeroizing::new);
     if password
         .as_ref()
         .is_some_and(|password| password.contains('\0'))
@@ -155,7 +160,7 @@ pub(super) fn start(
         .name(String::from("amane-pam"))
         .spawn(move || {
             let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                native::authenticate(&config, &current, password.as_deref())
+                native::authenticate(&config, &current, password.as_ref().map(|p| p.as_str()))
             }))
             .unwrap_or_else(|_| {
                 PamResult::Error(PamError::Worker(String::from(
@@ -213,8 +218,11 @@ fn message(
     text: String,
     kind: PamMessageKind,
     password: Option<&str>,
-) -> Result<Option<String>, ()> {
+) -> Result<Option<Zeroizing<String>>, ()> {
     let prompt = matches!(kind, PamMessageKind::Prompt { .. });
+    // a password given ahead answers only the hidden prompt it's for; a visible one, like a
+    // one-time code, is the user's to answer
+    let password = password.filter(|_| matches!(kind, PamMessageKind::Prompt { visible: false }));
     let (sender, receiver) = mpsc::channel();
     {
         let mut pam = Pam::write();
@@ -233,7 +241,7 @@ fn message(
         return Ok(None);
     }
     if let Some(password) = password {
-        return Ok(Some(String::from(password)));
+        return Ok(Some(Zeroizing::new(String::from(password))));
     }
     receiver.recv().map(Some).map_err(|_| ())
 }

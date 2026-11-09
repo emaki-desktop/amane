@@ -66,6 +66,11 @@ every other item now (its unique bus name and object path).
   hash of its pixels, so a changed icon is a new path the image cache loads
   afresh. While `NeedsAttention`, `icon()` is the attention icon. Tooltip HTML
   is stripped.
+- **What an item may name.** An icon name is a name, never a path: one with a `/` in it, or
+  starting with `.`, isn't looked up, so it can't reach out of the folder. The item's own folder
+  is walked at most 4 levels down and 64 entries a folder, so one naming `/` doesn't have the disk
+  walked. A pixmap counts only when its bytes are exactly width × height × 4 (in checked
+  arithmetic, so sizes can't wrap round) and it's no bigger than an image may be.
 - **Menus** (`tray/menu.rs`): `AboutToShow(0)`, then `GetLayout(0, -1, [])`,
   read into a tree. Underscores marking access keys come out, hidden entries
   are left out, and `icon-data` (a png) is written to the cache. Picking an

@@ -8,14 +8,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+# the token reads the repository and does nothing else
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # the flake's dev shell lists every library amane links
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
 
       - name: rustfmt
         run: nix develop -c cargo fmt --check
@@ -33,6 +37,11 @@ jobs:
       - name: test
         run: nix develop -c cargo test --lib --locked --features polkit-agent
 
+      # the dependencies: no known vulnerability or yanked crate, only allowed licences, and
+      # git only from the vello fork (deny.toml)
+      - name: cargo deny
+        run: nix develop -c nix run nixpkgs#cargo-deny -- check
+
       # rustdoc's warnings (broken links, docs naming private items) fail the build; the
       # fork's modules also warn on a public item without docs (their #![warn] line)
       - name: doc
@@ -45,12 +54,12 @@ jobs:
   terms:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: emaki-desktop/emaki
           path: .emaki

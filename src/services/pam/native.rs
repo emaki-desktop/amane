@@ -1,4 +1,5 @@
-use std::ffi::{CStr, CString, c_char, c_int, c_void};
+#![warn(clippy::undocumented_unsafe_blocks)]
+use std::ffi::{CStr, c_char, c_int, c_void};
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
 use std::sync::Arc;
@@ -68,7 +69,9 @@ unsafe extern "C" {
     fn pam_strerror(handle: *mut c_void, code: c_int) -> *const c_char;
     fn pam_end(handle: *mut c_void, status: c_int) -> c_int;
     fn calloc(count: usize, size: usize) -> *mut c_void;
-    fn strdup(text: *const c_char) -> *mut c_char;
+    fn malloc(size: usize) -> *mut c_void;
+    fn strlen(text: *const c_char) -> usize;
+    fn explicit_bzero(pointer: *mut c_void, size: usize);
     fn free(pointer: *mut c_void);
 }
 
@@ -79,7 +82,8 @@ struct Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        // only a successfully started handle is owned, and its conversation is still alive
+        // SAFETY: only a successfully started handle is owned, and its conversation is still
+        // alive
         unsafe {
             pam_end(self.pointer, self.status);
         }
@@ -102,7 +106,8 @@ pub(super) fn authenticate(
         data: ptr::from_mut(&mut context).cast(),
     };
     let mut pointer = ptr::null_mut();
-    // all strings and the callback context outlive the handle; PAM stays on this worker thread
+    // SAFETY: all strings and the callback context outlive the handle; PAM stays on this
+    // worker thread
     let status = unsafe {
         match &config.directory {
             Some(directory) => pam_start_confdir(
@@ -127,12 +132,14 @@ pub(super) fn authenticate(
     if session.aborted() {
         return PamResult::Aborted;
     }
+    // SAFETY: a handle pam_start gave, alive until Handle drops
     handle.status = unsafe { pam_authenticate(handle.pointer, NO_FLAGS) };
     if session.aborted() {
         return PamResult::Aborted;
     }
     if handle.status == PAM_SUCCESS {
         // accepting a password must not bypass account expiry or access restrictions
+        // SAFETY: as above
         handle.status = unsafe { pam_acct_mgmt(handle.pointer, NO_FLAGS) };
     }
     if session.aborted() {
@@ -143,11 +150,13 @@ pub(super) fn authenticate(
     }
 
     let mut user = ptr::null();
+    // SAFETY: as above, and `user` is a local PAM writes a pointer it owns into
     handle.status = unsafe { pam_get_item(handle.pointer, PAM_USER, &mut user) };
     if handle.status != PAM_SUCCESS {
         return classify(handle.pointer, handle.status);
     }
     // a module can change PAM_USER; success for someone else must not unlock this user's session
+    // SAFETY: not null, PAM_USER is a NUL-ended string PAM keeps while the handle lives
     if user.is_null() || unsafe { CStr::from_ptr(user.cast()) } != config.user.as_c_str() {
         handle.status = PAM_AUTH_ERR;
         return PamResult::Error(PamError::UserChanged);
@@ -156,10 +165,12 @@ pub(super) fn authenticate(
 }
 
 fn classify(handle: *mut c_void, code: c_int) -> PamResult {
+    // SAFETY: pam_strerror takes any handle, even null, and gives a static string or null
     let text = unsafe { pam_strerror(handle, code) };
     let message = if text.is_null() {
         String::from("unknown error")
     } else {
+        // SAFETY: not null, and a NUL-ended string PAM keeps
         unsafe { CStr::from_ptr(text) }
             .to_string_lossy()
             .into_owned()
@@ -190,9 +201,16 @@ impl Drop for Answers {
         if self.pointer.is_null() {
             return;
         }
+        // SAFETY: `pointer` is calloc's array of `count` responses, which PAM never took;
+        // each text is null or a malloc'd NUL-ended string this code wrote
         unsafe {
             for index in 0..self.count {
-                free((*self.pointer.add(index)).text.cast());
+                let text = (*self.pointer.add(index)).text;
+                // an answer is usually a password: wiped before it's let go
+                if !text.is_null() {
+                    explicit_bzero(text.cast(), strlen(text));
+                }
+                free(text.cast());
             }
             free(self.pointer.cast());
         }
@@ -206,6 +224,7 @@ unsafe extern "C" fn converse(
     data: *mut c_void,
 ) -> c_int {
     // a Rust panic must never cross PAM's C stack; partial response allocations have their own guard
+    // SAFETY: the arguments are PAM's, passed on as they came; answer() checks them
     panic::catch_unwind(AssertUnwindSafe(|| unsafe {
         answer(count, messages, responses, data)
     }))
@@ -226,18 +245,22 @@ unsafe fn answer(
         return PAM_CONV_ERR;
     }
     let count = count as usize;
+    // SAFETY: calloc of a small, checked count; null is handled below
     let pointer = unsafe { calloc(count, size_of::<Response>()) }.cast::<Response>();
     if pointer.is_null() {
         return PAM_BUF_ERR;
     }
     let answers = Answers { pointer, count };
+    // SAFETY: `data` is the Context authenticate() passed, alive for the whole conversation
     let context = unsafe { &*data.cast::<Context<'_>>() };
     for index in 0..count {
         // Linux-PAM supplies an array of message pointers, not a contiguous Message array
+        // SAFETY: `messages` has `count` entries, and index is below it
         let pointer = unsafe { *messages.add(index) };
         if pointer.is_null() {
             return PAM_CONV_ERR;
         }
+        // SAFETY: not null, and PAM's message lives while it waits for this answer
         let message = unsafe { &*pointer };
         let kind = match message.style {
             PAM_PROMPT_ECHO_OFF => PamMessageKind::Prompt { visible: false },
@@ -249,6 +272,7 @@ unsafe fn answer(
         if message.text.is_null() {
             return PAM_CONV_ERR;
         }
+        // SAFETY: not null, and a NUL-ended string of PAM's
         let text = unsafe { CStr::from_ptr(message.text) }
             .to_string_lossy()
             .into_owned();
@@ -256,18 +280,28 @@ unsafe fn answer(
             return PAM_CONV_ERR;
         };
         if let Some(response) = response {
-            let Ok(response) = CString::new(response) else {
+            // straight into the C string PAM takes, with no other copy: PAM wipes and frees it
+            let bytes = response.as_bytes();
+            if bytes.contains(&0) {
                 return PAM_CONV_ERR;
-            };
-            let text = unsafe { strdup(response.as_ptr()) };
+            }
+            // SAFETY: malloc of the answer's length and its NUL; null is handled below
+            let text = unsafe { malloc(bytes.len() + 1) }.cast::<c_char>();
             if text.is_null() {
                 return PAM_BUF_ERR;
             }
+            // SAFETY: text has room for the bytes and the NUL after them
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr().cast::<c_char>(), text, bytes.len());
+                *text.add(bytes.len()) = 0;
+            }
+            // SAFETY: index is below the count the array was allocated for
             unsafe {
                 (*answers.pointer.add(index)).text = text;
             }
         }
     }
+    // SAFETY: `responses` is PAM's non-null out pointer; PAM now owns the array
     unsafe {
         *responses = answers.release();
     }

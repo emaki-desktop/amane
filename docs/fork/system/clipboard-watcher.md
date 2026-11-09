@@ -22,7 +22,7 @@ ClipboardWatcher::subscribe(|clipboard| {
 | `changes()` | goes up with each new selection, the same text copied twice included |
 | `secret()` | the selection is offered as `x-kde-passwordManagerHint`, as `Clipboard::copy_secret` and password managers offer passwords |
 | `text_type()` | the best text kind on offer |
-| `ClipboardWatcher::contents(mime)` | the selection's data; blocks up to two seconds |
+| `ClipboardWatcher::contents(mime)` | the selection's data; blocks up to two seconds, and refuses a copy over 64 MiB |
 
 ## How it works
 

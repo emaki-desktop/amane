@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, Once, PoisonError};
 use std::thread;
 
+use zeroize::Zeroizing;
+
 use crate::services::worker;
 use crate::{Argument, Bus, ErrorKind, Method, Service, ServiceError, Value};
 
@@ -37,6 +39,9 @@ const UNKNOWN_METHOD: &str = "org.freedesktop.DBus.Error.UnknownMethod";
 
 // polkit's own agents give up after this many wrong passwords
 const TRIES: u8 = 3;
+
+// how much of a command line the dialog shows
+const COMMAND_LENGTH: usize = 512;
 
 const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
 "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
@@ -82,8 +87,8 @@ struct Waiting {
     // whether the helper is waiting on a line from the user
     prompting: bool,
 
-    // what the user typed before the helper asked, sent once it does
-    pending: Option<String>,
+    // what the user typed before the helper asked, sent once it does; wiped when dropped
+    pending: Option<Zeroizing<String>>,
 }
 
 /// How the agent runs, for [`Polkit::serve_agent_with`].
@@ -122,7 +127,10 @@ impl Polkit {
     }
 
     /// Answers the request with this id with what the user typed; an old id does nothing.
-    pub fn answer(id: u64, text: String) {
+    /// The text is wiped once it's sent.
+    pub fn answer(id: u64, text: impl Into<Zeroizing<String>>) {
+        let text = text.into();
+
         // off the caller's thread, which may be drawing with the service read
         worker::run(move || answer(id, text));
     }
@@ -242,6 +250,14 @@ fn locale() -> String {
 fn handle(method: Method) {
     let interface = method.interface().unwrap_or_else(|| String::from(AGENT));
 
+    // only polkitd may ask or cancel; the system bus's policy should already see to it, and
+    // this holds where a policy is loose
+    if interface == AGENT && !from_authority(&method) {
+        method.reply_error(FAILED, "Only the polkit authority may call the agent");
+
+        return;
+    }
+
     match (interface.as_str(), method.name()) {
         (AGENT, "BeginAuthentication") => begin(method),
         (AGENT, "CancelAuthentication") => {
@@ -267,8 +283,55 @@ fn handle(method: Method) {
     }
 }
 
+// whether the method came from the bus name that owns org.freedesktop.PolicyKit1 right now
+fn from_authority(method: &Method) -> bool {
+    let Some(sender) = method.sender() else {
+        return false;
+    };
+
+    let owner = Bus::system().try_call(
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "GetNameOwner",
+        &[Argument::from(AUTHORITY)],
+    );
+
+    owner.is_ok_and(|owner| owner.text() == sender)
+}
+
+/*
+ * what will run, from the details polkitd passes on: pkexec puts its command line there, with
+ * the arguments a helper acts on; for anything else, the command line of the process asking
+ */
+fn command_of(details: &Value) -> Option<String> {
+    let line = details.get("command_line").text();
+
+    let line = if !line.is_empty() {
+        line.to_string()
+    } else {
+        let pid: u32 = details.get("polkit.subject-pid").text().parse().ok()?;
+
+        let raw = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+
+        String::from_utf8_lossy(&raw)
+            .trim_end_matches('\0')
+            .replace('\0', " ")
+    };
+
+    let shown: String = line
+        .chars()
+        .map(|letter| if letter.is_control() { ' ' } else { letter })
+        .take(COMMAND_LENGTH)
+        .collect();
+
+    let shown = shown.trim();
+
+    (!shown.is_empty()).then(|| shown.to_string())
+}
+
 fn begin(method: Method) {
-    let [action_id, message, icon, _details, cookie, identities] = method.arguments() else {
+    let [action_id, message, icon, details, cookie, identities] = method.arguments() else {
         method.reply_error(FAILED, "Bad arguments");
 
         return;
@@ -288,6 +351,7 @@ fn begin(method: Method) {
         message: message.text().to_string(),
         icon: icon.text().to_string(),
         user: user.clone(),
+        command: command_of(details),
         prompt: None,
         info: Vec::new(),
         error: None,
@@ -424,12 +488,24 @@ fn on_event(id: u64, event: Event) {
     }
 }
 
-fn answer(id: u64, text: String) {
+fn answer(id: u64, text: Zeroizing<String>) {
     let mut waiting = WAITING.lock().unwrap_or_else(PoisonError::into_inner);
 
     let Some(current) = waiting.as_mut().filter(|waiting| waiting.id == id) else {
         return;
     };
+
+    // the helper reads one answer a line: a line break would answer its next question too
+    if text.contains(['\n', '\r']) {
+        with_request(id, |request| {
+            request.error = Some(ServiceError::new(
+                ErrorKind::Failed,
+                "A password can't have a line break in it.",
+            ));
+        });
+
+        return;
+    }
 
     if current.prompting {
         current.prompting = false;
@@ -475,25 +551,11 @@ fn pick_user(identities: &Value) -> Option<String> {
 }
 
 fn own_uid() -> Option<u32> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-
-    let line = status.lines().find(|line| line.starts_with("Uid:"))?;
-
-    line.split_whitespace().nth(1)?.parse().ok()
+    Some(crate::services::users::own_uid())
 }
 
 fn user_name(uid: u32) -> Option<String> {
-    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
-
-    passwd.lines().find_map(|line| {
-        let mut fields = line.split(':');
-
-        let name = fields.next()?;
-
-        let id: u32 = fields.nth(1)?.parse().ok()?;
-
-        (id == uid).then(|| name.to_string())
-    })
+    crate::services::users::name_of(uid)
 }
 
 fn take_if(wanted: impl Fn(&Waiting) -> bool) -> Option<Waiting> {
@@ -533,6 +595,62 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+
+    fn details(pairs: &[(&str, &str)]) -> Value {
+        Value::Map(
+            pairs
+                .iter()
+                .map(|(key, value)| (key.to_string(), Value::Text(value.to_string())))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn pkexecs_command_line_is_shown_whole_and_clean() {
+        let asked = details(&[(
+            "command_line",
+            "/run/current-system/sw/bin/emaki-nixos-activate switch /nix/store/abc-nixos-system-x",
+        )]);
+
+        assert_eq!(
+            command_of(&asked).as_deref(),
+            Some(
+                "/run/current-system/sw/bin/emaki-nixos-activate switch /nix/store/abc-nixos-system-x"
+            )
+        );
+
+        // a line break or escape can't hide the rest or fake a second line
+        let tricky = details(&[("command_line", "helper\nlooks harmless\x1b[2K")]);
+        assert_eq!(
+            command_of(&tricky).as_deref(),
+            Some("helper looks harmless [2K")
+        );
+
+        let long = "x".repeat(COMMAND_LENGTH * 2);
+        let long = details(&[("command_line", long.as_str())]);
+        assert_eq!(
+            command_of(&long).map(|line| line.len()),
+            Some(COMMAND_LENGTH)
+        );
+    }
+
+    #[test]
+    fn without_pkexec_the_asking_process_is_read() {
+        let me = std::process::id().to_string();
+        let asked = details(&[("polkit.subject-pid", me.as_str())]);
+
+        assert!(command_of(&asked).is_some_and(|line| !line.is_empty()));
+        assert_eq!(command_of(&details(&[])), None);
+    }
+
+    #[test]
+    fn our_own_user_has_a_name() {
+        assert!(
+            own_uid()
+                .and_then(user_name)
+                .is_some_and(|name| !name.is_empty())
+        );
+    }
 
     fn identity(kind: &str, key: &str, id: f64) -> Value {
         Value::List(vec![

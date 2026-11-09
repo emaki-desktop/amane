@@ -13,7 +13,7 @@ use super::Bitmap;
 const LONGEST_SIDE: f32 = 256.0;
 
 pub fn rasterize(bytes: &[u8]) -> Option<Bitmap> {
-    let tree = Tree::from_data(bytes, &Options::default()).ok()?;
+    let tree = Tree::from_data(bytes, &options()).ok()?;
 
     let size = tree.size();
 
@@ -47,6 +47,19 @@ pub fn rasterize(bytes: &[u8]) -> Option<Bitmap> {
     };
 
     Some(bitmap)
+}
+
+/*
+ * an svg can name other files in an <image>, which usvg would read whatever they are (a
+ * notification's or tray item's svg naming /dev/zero, or a private file); only images inside
+ * the svg itself, as data: URLs, are drawn
+ */
+pub(super) fn options() -> Options<'static> {
+    let mut options = Options::default();
+
+    options.image_href_resolver.resolve_string = Box::new(|_, _| None);
+
+    options
 }
 
 #[cfg(test)]

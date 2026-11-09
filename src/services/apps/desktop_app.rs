@@ -104,15 +104,25 @@ impl DesktopApp {
         self.shown
     }
 
-    // the command lines that open `files` with it, one a file for a program that takes one at a time
-    pub fn commands_with(&self, files: &[PathBuf]) -> Vec<String> {
-        exec::fill_field_codes(&self.exec_codes, files)
+    // the commands, as argument lists, that open `files` with it, one a file for a program that
+    // takes one at a time; a file is always one argument, never text a shell reads. None when
+    // the entry's Exec line can't be read
+    pub fn commands_with(&self, files: &[PathBuf]) -> Vec<Vec<String>> {
+        exec::fill_field_codes(&self.exec_codes, files).unwrap_or_else(|| {
+            eprintln!("amane: {}'s Exec line can't be read", self.id);
+            Vec::new()
+        })
     }
 
-    // starts it on `files`, and moves on without waiting
+    // starts it on `files`, and moves on without waiting; with none, as launch() does
     pub fn launch_with(&self, files: &[PathBuf]) {
+        if files.is_empty() {
+            self.launch();
+            return;
+        }
+
         for command in self.commands_with(files) {
-            Launch::shell(&command).app_id(Some(&self.id)).activated();
+            Launch::argv(&command).app_id(Some(&self.id)).activated();
         }
     }
 }

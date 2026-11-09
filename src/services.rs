@@ -32,6 +32,7 @@ pub mod store;
 mod subscribe;
 mod tray;
 pub(crate) mod uevent;
+pub(crate) mod users;
 mod window_info;
 mod windows;
 pub(crate) mod worker;

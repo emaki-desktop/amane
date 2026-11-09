@@ -68,6 +68,7 @@ fork](#maintaining-the-fork) is for whoever rebases it onto upstream.
 | Subscriptions | one service following another; polling only while watched | `Service::subscribe`, `Subscription`, `Service::idle_stop` | [subscriptions](system/subscriptions.md) | — | done |
 | Launching | starting programs without panics, each in its own systemd scope, with the compositor's token when asked | `Launch`, `Launch::activated`, `LaunchError` | [apps-and-processes](system/apps-and-processes.md#each-program-in-its-own-scope) | — | done |
 | IPC | a socket per app-id, one copy per app, calling another app | `ipc_call`, `App::on_activate` | [ipc](system/ipc.md) | `examples/app_window.rs` | done |
+| Untrusted input and secrets | limits on images, pastes, drops, IPC calls and notifications; PAM's user and answers; users through NSS | — | [hardening](system/hardening.md) | — | done |
 ### Groups
 
 - **Compositor:** niri services and actions, each a `Service` like upstream's.

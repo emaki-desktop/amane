@@ -20,6 +20,9 @@ pub struct AuthRequest {
     // the user whose password proves it
     pub(crate) user: String,
 
+    // what will run with the privilege: pkexec's command line, else the asking process's
+    pub(crate) command: Option<String>,
+
     // what the helper asks for right now, once it does
     pub(crate) prompt: Option<AuthPrompt>,
 
@@ -69,6 +72,13 @@ impl AuthRequest {
     /// The user whose password proves it.
     pub fn user(&self) -> &str {
         &self.user
+    }
+
+    /// What will run with the privilege, as polkitd tells it: pkexec's command line (its
+    /// arguments included, so a helper's target is seen), else the command line of the
+    /// process asking. Control characters are shown as spaces, and a long one is cut short.
+    pub fn command(&self) -> Option<&str> {
+        self.command.as_deref()
     }
 
     /// What the helper asks for right now, none until it does.

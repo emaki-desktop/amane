@@ -1,4 +1,10 @@
-#![warn(clippy::unwrap_used, clippy::dbg_macro, clippy::todo, missing_docs)]
+#![warn(
+    clippy::undocumented_unsafe_blocks,
+    clippy::unwrap_used,
+    clippy::dbg_macro,
+    clippy::todo,
+    missing_docs
+)]
 
 //! The clipboard's selection as it changes, whoever copied it: what a clipboard history needs.
 //!
@@ -278,6 +284,9 @@ fn pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
 }
 
+// the most read of one copy: a big screenshot fits
+const MAX_CONTENTS: usize = 64 * 1024 * 1024;
+
 // everything until the writer closes, or until `timeout` passes without it
 fn read_all(fd: OwnedFd, timeout: Duration) -> io::Result<Vec<u8>> {
     let deadline = Instant::now() + timeout;
@@ -312,7 +321,16 @@ fn read_all(fd: OwnedFd, timeout: Duration) -> io::Result<Vec<u8>> {
         }
         match file.read(&mut chunk) {
             Ok(0) => return Ok(data),
-            Ok(read) => data.extend_from_slice(&chunk[..read]),
+            Ok(read) => {
+                // the program that copied says how much
+                if data.len() + read > MAX_CONTENTS {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "the copy is too big to read",
+                    ));
+                }
+                data.extend_from_slice(&chunk[..read]);
+            }
             Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
             Err(err) => return Err(err),
         }

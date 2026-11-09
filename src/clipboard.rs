@@ -28,11 +28,10 @@ impl Clipboard {
     /// Puts a password on the clipboard the way password managers do: it's also offered as
     /// x-kde-passwordManagerHint, so clipboard histories leave it out, and it's taken off the
     /// clipboard after `clear_after` if nothing was copied since. The text is wiped once gone.
-    pub fn copy_secret(text: zeroize::Zeroizing<String>, clear_after: std::time::Duration) {
-        request(Request::CopySecret(
-            String::from(text.as_str()),
-            clear_after,
-        ));
+    pub fn copy_secret(mut text: zeroize::Zeroizing<String>, clear_after: std::time::Duration) {
+        // moved out, not copied: the one copy is the clipboard's, which wipes it when it goes
+        let text = std::mem::take(&mut *text);
+        request(Request::CopySecret(text, clear_after));
     }
 }
 

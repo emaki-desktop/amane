@@ -1,5 +1,7 @@
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use std::time::SystemTime;
+use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::services::apps;
 use crate::{Argument, Bus, Method, Notification, Notifications, Service, Timeout, Urgency, Value};
@@ -14,6 +16,63 @@ const INTERFACE: &str = "org.freedesktop.Notifications";
 
 // the key of what clicking the notification itself does
 pub const DEFAULT_ACTION: &str = "default";
+
+/*
+ * any program on the session bus may notify, so one can't flood the screen or the history: so
+ * many a sender in a while (more are answered, but not shown), and the text and buttons cut to
+ * what a card can show
+ */
+const PER_SENDER: usize = 30;
+const PER_WHILE: Duration = Duration::from_secs(10);
+const MAX_SUMMARY: usize = 1024;
+const MAX_BODY: usize = 16 * 1024;
+const MAX_ACTIONS: usize = 8;
+
+// when each sender last notified, newest last
+static RECENT: Mutex<Option<HashMap<String, VecDeque<Instant>>>> = Mutex::new(None);
+
+// whether `sender` may show another now; counts it if so
+fn allowed(sender: &str) -> bool {
+    let mut recent = RECENT.lock().unwrap_or_else(PoisonError::into_inner);
+    let recent = recent.get_or_insert_with(HashMap::new);
+    let now = Instant::now();
+
+    // senders gone quiet are let go, so the map stays small
+    recent.retain(|_, times| {
+        times
+            .back()
+            .is_some_and(|at| now.duration_since(*at) < PER_WHILE)
+    });
+
+    let times = recent.entry(sender.to_string()).or_default();
+    while times
+        .front()
+        .is_some_and(|at| now.duration_since(*at) >= PER_WHILE)
+    {
+        times.pop_front();
+    }
+
+    if times.len() >= PER_SENDER {
+        return false;
+    }
+
+    times.push_back(now);
+    true
+}
+
+// `text` cut to at most `limit` bytes, at a letter's edge
+fn cut(text: &str, limit: usize) -> String {
+    if text.len() <= limit {
+        return String::from(text);
+    }
+
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    format!("{}…", &text[..end])
+}
 
 pub fn run() {
     let bus = Bus::session();
@@ -61,7 +120,15 @@ fn notify(method: &Method) {
         return;
     };
 
-    let (actions, has_default) = read_actions(actions);
+    if !method.sender().is_some_and(|sender| allowed(&sender)) {
+        // answered, so the sender carries on, but not shown
+        method.reply(&[Argument::from(0u32)]);
+
+        return;
+    }
+
+    let (mut actions, has_default) = read_actions(actions);
+    actions.truncate(MAX_ACTIONS);
 
     let desktop_entry = hints.get("desktop-entry").text();
 
@@ -70,8 +137,8 @@ fn notify(method: &Method) {
         id: 0,
 
         app_name: String::from(app_name.text()),
-        summary: String::from(summary.text()),
-        body: String::from(body.text()),
+        summary: cut(summary.text(), MAX_SUMMARY),
+        body: cut(body.text(), MAX_BODY),
         icon: String::from(icon.text()),
         image: image_hint::read(hints),
         icon_path: find_icon(icon.text(), desktop_entry),
@@ -222,5 +289,27 @@ mod tests {
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].key(), "yes");
         assert_eq!(actions[0].label(), "Yes");
+    }
+}
+
+#[cfg(test)]
+mod limits {
+    use super::*;
+
+    #[test]
+    fn a_sender_may_only_notify_so_often() {
+        let sender = ":test.flood";
+        for _ in 0..PER_SENDER {
+            assert!(allowed(sender));
+        }
+        assert!(!allowed(sender));
+        // another sender isn't held back by it
+        assert!(allowed(":test.other"));
+    }
+
+    #[test]
+    fn long_text_is_cut_at_a_letter() {
+        assert_eq!(cut("short", 10), "short");
+        assert_eq!(cut("ééé", 3), "é…");
     }
 }

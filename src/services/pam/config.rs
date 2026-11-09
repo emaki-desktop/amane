@@ -1,4 +1,3 @@
-use std::env;
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -72,6 +71,8 @@ impl PamConfig {
     }
 }
 
+// the user this process runs as, from the kernel and NSS, never $USER, which anyone starting
+// the program sets
 pub(super) fn current_user() -> Result<String, PamError> {
-    env::var("USER").map_err(|_| PamError::UserUnavailable)
+    crate::services::users::own_name().ok_or(PamError::UserUnavailable)
 }

@@ -188,15 +188,24 @@ impl WaylandState {
     }
 }
 
+// the most read from a drop
+const MAX_DROPPED: u64 = 16 * 1024 * 1024;
+
 // reads a pipe to its end on its own thread and wakes the event loop with what came
 pub(super) fn read_later(
-    mut file: File,
+    file: File,
     then: impl FnOnce(Option<Vec<u8>>) -> Arrived + Send + 'static,
 ) {
     thread::spawn(move || {
         let mut bytes = Vec::new();
 
-        let read = file.read_to_end(&mut bytes).ok().map(|_| bytes);
+        // the other program says how much: a drop of links or text is far less than this
+        let read = file
+            .take(MAX_DROPPED + 1)
+            .read_to_end(&mut bytes)
+            .ok()
+            .filter(|_| bytes.len() as u64 <= MAX_DROPPED)
+            .map(|_| bytes);
 
         ARRIVED
             .lock()

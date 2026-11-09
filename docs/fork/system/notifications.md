@@ -63,6 +63,21 @@ unwrapped. When the sender names no icon, the `desktop-entry` hint is
 looked up instead. The `image()` hints, such as an avatar, are separate
 and unchanged.
 
+**Limits.** Any program on the session bus may notify, so what one sends is bounded before
+it's kept:
+
+- **Pictures.** `image-data` is checked against the bytes it carries before anything is
+  allocated: 8 bits a sample, 3 or 4 channels, a row stride at least a row of pixels, enough
+  bytes for the last row, and at most 16384 pixels a side and 72 MP, all in checked arithmetic.
+  It's written as a png only under `$XDG_RUNTIME_DIR/amane-notifications` (made `0700`), as a new
+  `0600` file, never through a link left there; without a runtime directory nothing is saved, as
+  a shared `/tmp` would let another user swap the file. An `image-path` or icon file is read like
+  any image (see [hardening](hardening.md)): a device such as `/dev/zero`, or a fifo, isn't.
+- **Rate.** A sender gets 30 notifications in 10 seconds; more are answered with id 0 and not
+  shown, so a flood can't bury the screen or the history.
+- **Text.** The summary is cut at 1 KiB and the body at 16 KiB (at a letter's edge, with "…"),
+  and at most 8 buttons are kept.
+
 **Expire.** `expire` closes the notification and emits
 `NotificationClosed` with reason 1 (*expired*), where `dismiss` sends
 2. A sender can tell that its notification timed out, rather than being

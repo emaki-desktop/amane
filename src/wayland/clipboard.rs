@@ -211,6 +211,9 @@ pub fn text_type(types: &[String]) -> Option<String> {
         .map(|kind| String::from(*kind))
 }
 
+// the most text read from a paste
+const MAX_TEXT: u64 = 16 * 1024 * 1024;
+
 // reads on its own thread, so a slow program never holds up a frame, and hands the text back
 pub fn read_text(pipe: ReadPipe, then: Then) {
     let mut file = File::from(OwnedFd::from(pipe));
@@ -218,7 +221,9 @@ pub fn read_text(pipe: ReadPipe, then: Then) {
     thread::spawn(move || {
         let mut bytes = Vec::new();
 
-        if file.read_to_end(&mut bytes).is_err() {
+        // the program that copied says how much: pasted text is far less than this
+        let read = (&mut file).take(MAX_TEXT + 1).read_to_end(&mut bytes);
+        if read.is_err() || bytes.len() as u64 > MAX_TEXT {
             return;
         }
 

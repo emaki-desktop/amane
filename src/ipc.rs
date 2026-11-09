@@ -4,9 +4,14 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::time::Instant;
 
 // the call a second launch of an app sends to the one already running
 pub(crate) const ACTIVATE: &str = "activate";
+
+// a call is a name and a few short lines; anything bigger is refused unread
+pub(crate) const MAX_CALL_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_ARGUMENTS: usize = 256;
 
 pub struct IpcCall {
     pub(crate) name: String,
@@ -56,6 +61,53 @@ impl IpcCall {
         let arguments = lines.collect::<io::Result<Vec<String>>>()?;
 
         Ok(Self { name, arguments })
+    }
+
+    /*
+     * read() from a socket, all of it by `deadline` (each wait is only as long as what's
+     * left, so a byte now and then can't stretch it) and no more than MAX_CALL_BYTES and
+     * MAX_ARGUMENTS
+     */
+    pub(crate) fn read_within(stream: &UnixStream, deadline: Instant) -> io::Result<Self> {
+        let mut bytes = Vec::new();
+        let mut chunk = [0u8; 4096];
+
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+
+            if left.is_zero() {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+
+            stream.set_read_timeout(Some(left))?;
+
+            let read = match (&*stream).read(&mut chunk) {
+                Ok(read) => read,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            };
+
+            if read == 0 {
+                break;
+            }
+
+            if bytes.len() + read > MAX_CALL_BYTES {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "call too big"));
+            }
+
+            bytes.extend_from_slice(&chunk[..read]);
+        }
+
+        let call = Self::read(bytes.as_slice())?;
+
+        if call.arguments.len() > MAX_ARGUMENTS {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "too many arguments",
+            ));
+        }
+
+        Ok(call)
     }
 }
 
@@ -141,6 +193,42 @@ pub fn call(app_id: &str, name: &str, arguments: &[String]) -> io::Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn within(sent: &[u8], close: bool) -> io::Result<IpcCall> {
+        let (ours, mut theirs) = UnixStream::pair()?;
+        theirs.write_all(sent)?;
+        if close {
+            theirs.shutdown(Shutdown::Write)?;
+        }
+        let deadline = Instant::now() + std::time::Duration::from_millis(200);
+        let read = IpcCall::read_within(&ours, deadline);
+        drop(theirs);
+        read
+    }
+
+    #[test]
+    fn a_whole_call_is_read() {
+        let call = within(b"passwords\nstatus\n", true).expect("the call");
+        assert_eq!(call.name, "passwords");
+        assert_eq!(call.arguments, ["status"]);
+    }
+
+    #[test]
+    fn a_call_that_never_ends_times_out() {
+        let started = Instant::now();
+        let read = within(b"passwords\n", false);
+        assert!(read.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[test]
+    fn a_call_too_big_or_with_too_many_lines_is_refused() {
+        let big = vec![b'a'; MAX_CALL_BYTES + 1];
+        assert!(within(&big, true).is_err());
+
+        let many = "x\n".repeat(MAX_ARGUMENTS + 2);
+        assert!(within(many.as_bytes(), true).is_err());
+    }
 
     #[test]
     fn each_app_has_its_own_socket() {
