@@ -1,10 +1,15 @@
+mod balance;
 mod device;
+mod level;
 mod pulse;
+mod streams;
 
 use crate::Service;
 use crate::services::worker;
 
 pub use device::{AudioDevice, AudioKind};
+pub use level::AudioLevel;
+pub use streams::AudioStream;
 
 use pulse::Device;
 
@@ -24,6 +29,12 @@ pub struct Audio {
     outputs: Vec<AudioDevice>,
 
     inputs: Vec<AudioDevice>,
+
+    // what each app is playing, see streams.rs
+    streams: Vec<AudioStream>,
+
+    // the default output's lean, none without a left and right
+    balance: Option<f32>,
 }
 
 // event-driven, the sound server announces every volume change
@@ -50,6 +61,9 @@ impl Service for Audio {
 
         self.outputs = devices(Device::Output);
         self.inputs = devices(Device::Input);
+
+        self.streams = streams::read();
+        self.balance = balance::read();
 
         *self != before
     }
@@ -98,6 +112,43 @@ impl Audio {
 
     pub fn input_kind(&self) -> AudioKind {
         default_kind(&self.inputs)
+    }
+
+    /// What each app is playing, in the sound server's order; an app's
+    /// event sounds (a notification's, a click) aren't here.
+    pub fn streams(&self) -> &[AudioStream] {
+        &self.streams
+    }
+
+    /// The default output's balance, −1 (all left) to 1 (all right), or none
+    /// when it has no left and right.
+    pub fn balance(&self) -> Option<f32> {
+        self.balance
+    }
+
+    /// Leans the default output, −1 to 1, keeping its volume.
+    pub fn set_balance(balance: f32) {
+        worker::run(move || balance::set(balance));
+    }
+
+    /// Sets one app's stream, by its [`AudioStream::index`]; above 100 is
+    /// treated as 100.
+    pub fn set_stream_volume(index: u32, volume: u8) {
+        worker::run(move || streams::set_volume(index, volume.min(100)));
+    }
+
+    /// Mutes or unmutes one app's stream.
+    pub fn set_stream_muted(index: u32, muted: bool) {
+        worker::run(move || streams::set_muted(index, muted));
+    }
+
+    /// Mutes one app's stream, or unmutes it when it was muted.
+    pub fn toggle_stream_mute(index: u32) {
+        worker::run(move || {
+            if let Some(muted) = streams::muted(index) {
+                streams::set_muted(index, !muted);
+            }
+        });
     }
 
     // anything above 100 is treated as 100

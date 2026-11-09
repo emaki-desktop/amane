@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use libpulse_binding::callbacks::ListResult;
+use libpulse_binding::channelmap::Map;
 use libpulse_binding::context::subscribe::InterestMaskSet;
 use libpulse_binding::context::{Context, FlagSet, State};
 use libpulse_binding::mainloop::standard::{IterateResult, Mainloop};
@@ -22,7 +23,7 @@ pub enum Device {
 
 impl Device {
     // pulse resolves these to whatever device is the default right now
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Device::Output => "@DEFAULT_SINK@",
             Device::Input => "@DEFAULT_SOURCE@",
@@ -78,9 +79,10 @@ impl Endpoint {
 
 // what pulse reports for a default device, before converting to percent
 #[derive(Clone, Copy)]
-struct Levels {
-    volumes: ChannelVolumes,
-    muted: bool,
+pub(super) struct Levels {
+    pub volumes: ChannelVolumes,
+    pub map: Map,
+    pub muted: bool,
 }
 
 // how long to wait before trying the sound server again while it is down
@@ -95,7 +97,7 @@ thread_local! {
  * runs work on this thread's connection, opened again when the sound server
  * went away, like when it restarts; with no sound server work gets the default
  */
-fn with_connection<T: Default>(work: impl FnOnce(&mut Connection) -> T) -> T {
+pub(super) fn with_connection<T: Default>(work: impl FnOnce(&mut Connection) -> T) -> T {
     CONNECTION.with_borrow_mut(|slot| {
         let alive = slot.as_ref().is_some_and(Connection::ready);
 
@@ -118,7 +120,8 @@ pub fn read(device: Device) -> Level {
         };
 
         Level {
-            volume: percent(levels.volumes.avg()),
+            // the loudest channel, as pulse's own mixers show it once a balance leans
+            volume: percent(levels.volumes.max()),
             muted: levels.muted,
         }
     })
@@ -130,11 +133,10 @@ pub fn set_volume(device: Device, volume: u8) {
             return;
         };
 
-        // every channel gets the same level, like a single volume slider does
+        // the channels keep their ratios, so a balance survives the volume keys
         let mut volumes = levels.volumes;
-        let channels = volumes.len();
 
-        volumes.set(channels, level(volume));
+        volumes.scale(level(volume));
 
         let mut introspect = connection.context.introspect();
 
@@ -184,8 +186,8 @@ pub fn set_default(device: Device, name: &str) {
 }
 
 /*
- * calls changed after every change to an output, an input or the
- * default choice, and never returns; it keeps its own
+ * calls changed after every change to an output, an input, an app's
+ * stream or the default choice, and never returns; it keeps its own
  * connection, so changed can still use read()
  */
 pub fn watch(mut changed: impl FnMut()) {
@@ -212,7 +214,10 @@ fn follow(mut connection: Connection, changed: &mut impl FnMut()) {
         .context
         .set_subscribe_callback(Some(Box::new(move |_, _, _| marked.set(true))));
 
-    let interests = InterestMaskSet::SINK | InterestMaskSet::SOURCE | InterestMaskSet::SERVER;
+    let interests = InterestMaskSet::SINK
+        | InterestMaskSet::SOURCE
+        | InterestMaskSet::SINK_INPUT
+        | InterestMaskSet::SERVER;
 
     connection.context.subscribe(interests, |_| {});
 
@@ -227,14 +232,14 @@ fn follow(mut connection: Connection, changed: &mut impl FnMut()) {
 }
 
 // fields drop in order, and pulse wants the context gone before its mainloop
-struct Connection {
-    context: Context,
+pub(super) struct Connection {
+    pub context: Context,
     mainloop: Mainloop,
 }
 
 impl Connection {
     // none when the sound server can't be reached
-    fn open() -> Option<Self> {
+    pub(super) fn open() -> Option<Self> {
         let mainloop = Mainloop::new()?;
 
         let mut context = Context::new(&mainloop, "amane")?;
@@ -257,7 +262,7 @@ impl Connection {
     }
 
     // none when there is no such device at all
-    fn levels(&mut self, device: Device) -> Option<Levels> {
+    pub(super) fn levels(&mut self, device: Device) -> Option<Levels> {
         let found = Rc::new(Cell::new(None));
         let slot = Rc::clone(&found);
 
@@ -273,6 +278,7 @@ impl Connection {
 
                     slot.set(Some(Levels {
                         volumes: sink.volume,
+                        map: sink.channel_map,
                         muted: sink.mute,
                     }));
                 });
@@ -288,6 +294,7 @@ impl Connection {
 
                     slot.set(Some(Levels {
                         volumes: source.volume,
+                        map: source.channel_map,
                         muted: source.mute,
                     }));
                 });
@@ -379,7 +386,7 @@ impl Connection {
     }
 
     // blocks until pulse has answered
-    fn wait<F: ?Sized>(&mut self, operation: Operation<F>) {
+    pub(super) fn wait<F: ?Sized>(&mut self, operation: Operation<F>) {
         while operation.get_state() == operation::State::Running {
             if !self.iterate() {
                 return;
@@ -392,7 +399,7 @@ impl Connection {
     }
 
     // false once the connection to the sound server is broken
-    fn iterate(&mut self) -> bool {
+    pub(super) fn iterate(&mut self) -> bool {
         let result = self.mainloop.iterate(true);
 
         matches!(result, IterateResult::Success(_))
@@ -400,7 +407,7 @@ impl Connection {
 }
 
 // pulse counts volume with 100% at Volume::NORMAL
-fn percent(volume: Volume) -> u8 {
+pub(super) fn percent(volume: Volume) -> u8 {
     let level = u64::from(volume.0);
     let normal = u64::from(Volume::NORMAL.0);
 
@@ -409,7 +416,7 @@ fn percent(volume: Volume) -> u8 {
     rounded.min(100) as u8
 }
 
-fn level(percent: u8) -> Volume {
+pub(super) fn level(percent: u8) -> Volume {
     let normal = Volume::NORMAL.0;
 
     Volume(u32::from(percent) * normal / 100)

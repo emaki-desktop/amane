@@ -49,7 +49,7 @@ use crate::changes;
 
 pub use appearance::{Appearance, Scheme};
 pub use apps::{Apps, DesktopAction, DesktopApp, MimeApps};
-pub use audio::{Audio, AudioDevice, AudioKind};
+pub use audio::{Audio, AudioDevice, AudioKind, AudioLevel, AudioStream};
 pub use backdrop::Backdrop;
 pub use battery::{Battery, BatteryState, DeviceKind, PowerDevice, WarningLevel};
 pub use bluetooth::{
