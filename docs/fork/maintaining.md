@@ -130,6 +130,7 @@ and its submodules inherit it. Give a new fork module the same line. `clippy.tom
 | `Appearance` | `1425781`, `b6eb729` | `src/services/appearance.rs`; `examples/appearance.rs` |
 | Audio devices (and a pulse teardown fix) | `72a1314` | `src/services/audio/{device,pulse}.rs` |
 | Audio app streams, balance, input level | `4e924c9` | `src/services/audio/{streams,balance,level,pulse}.rs` |
+| Network profile details, connection details, forget, hidden networks | `d4693f9` | `src/services/network/{connections,details,profile}.rs` |
 | Notification timeout, hints, expire | `fb2da2c` | `src/services/notifications/` |
 | Blur regions, blur shapes, `Backdrop` | `6307b38`, `8a8f66e`, `ab1afbd`, `7cee525` | `src/blur.rs`, `src/services/backdrop.rs`, `src/wayland/{background_effect,blur_shapes,update}.rs`, `protocols/niri-blur-shapes-v1.xml`; `examples/blur_shapes.rs` |
 | Drag release hook, drag cursor | `6307b38`, `4eed9b7` | `src/input/pointer.rs`, `src/widgets/rectangle/targets.rs` |
