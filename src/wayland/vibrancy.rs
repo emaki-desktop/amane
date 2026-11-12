@@ -130,7 +130,8 @@ impl VibrantLayer {
      * draws the layer's commands at the window's size, the buffer at the
      * window's scale; a layer that would show what it shows already is left
      * as it is (synced, it keeps its buffer through the window's commit),
-     * and one with nothing on it is unmapped and holds nothing
+     * and one with nothing on it is unmapped and holds nothing; true when it
+     * drew or unmapped, which shows with the window's next commit
      */
     pub fn draw(
         &mut self,
@@ -139,12 +140,12 @@ impl VibrantLayer {
         buffer: (u32, u32),
         whole_scale: Option<i32>,
         moving: bool,
-    ) {
+    ) -> bool {
         let showing = !commands.is_empty();
 
         // an empty layer that showed nothing has nothing on it to clear
         if !showing && !self.showing {
-            return;
+            return false;
         }
 
         /*
@@ -163,7 +164,7 @@ impl VibrantLayer {
 
             self.showing = false;
 
-            return;
+            return true;
         }
 
         if !moving
@@ -172,7 +173,7 @@ impl VibrantLayer {
                 .as_ref()
                 .is_some_and(|gpu| gpu.shows(&commands, buffer.0, buffer.1))
         {
-            return;
+            return false;
         }
 
         match (&self.viewport, whole_scale) {
@@ -182,12 +183,16 @@ impl VibrantLayer {
         }
 
         let Some(gpu) = &mut self.gpu else {
-            return;
+            return false;
         };
 
         if gpu.draw(commands, buffer.0, buffer.1) {
             self.showing = showing;
+
+            return true;
         }
+
+        false
     }
 }
 

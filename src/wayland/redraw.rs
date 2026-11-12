@@ -44,8 +44,19 @@ impl OpenWindow {
 
         // what the compositor blurs behind the last frame shown, put back if this one is skipped
         let shown_blur = self.blur_sent();
+        let shown_input = self.input_region.clone();
 
         let unsent = self.update_surface(&content);
+
+        /*
+         * whether this frame sent the compositor anything that only takes effect with a commit:
+         * a layer window's settings, input region or blur; a normal window or popup is always
+         * taken to have (what it sends isn't tracked)
+         */
+        let sent = unsent
+            || !matches!(self.role, Role::Layer { .. })
+            || self.input_region != shown_input
+            || self.blur_sent() != shown_blur;
 
         // 0 until the compositor configures the window, and again while it is hidden
         if self.width == 0 || self.height == 0 {
@@ -95,7 +106,7 @@ impl OpenWindow {
 
         let drawn = Instant::now();
 
-        let presented = self.present(frame.renderer, vibrant, frame.moving);
+        let presented = self.present(frame.renderer, vibrant, frame.moving, sent);
 
         let timing = Timing {
             started,
@@ -170,9 +181,10 @@ impl OpenWindow {
      * false when the gpu skipped the frame, so nothing was committed; the window
      * is measured in logical pixels, the buffer in real ones, and the scale goes
      * out with the commit that presenting the frame makes; a frame the same
-     * as the one on screen only commits, for the settings sent with it
+     * as the one on screen commits only for what was sent with it (`sent`) or
+     * a vibrant layer that drew: an empty commit still wakes the compositor
      */
-    fn present(&mut self, renderer: Renderer, vibrant: bool, moving: bool) -> bool {
+    fn present(&mut self, renderer: Renderer, vibrant: bool, moving: bool, sent: bool) -> bool {
         let (buffer_width, buffer_height) = match &self.fractional {
             // a buffer at the exact scale, shown back at the window's size
             Some(fractional) => {
@@ -199,11 +211,14 @@ impl OpenWindow {
 
         let commands = renderer.finish();
 
-        let commands =
+        let (commands, layers_drew) =
             self.draw_vibrant_layers(commands, vibrant, moving, (buffer_width, buffer_height));
 
         if !moving && self.gpu.shows(&commands, buffer_width, buffer_height) {
-            self.role.commit();
+            // the layers are synced subsurfaces: what they drew shows with this commit
+            if sent || layers_drew {
+                self.role.commit();
+            }
 
             return true;
         }
@@ -214,7 +229,8 @@ impl OpenWindow {
     /*
      * a vibrant window's light and dark grey content goes on its layers, drawn
      * first: they're synced, so they show with the window's own commit; what's
-     * left is the window's. Without niri-vibrancy everything stays on the window
+     * left is the window's, and whether a layer changed (so that commit is due).
+     * Without niri-vibrancy everything stays on the window
      */
     fn draw_vibrant_layers(
         &mut self,
@@ -222,16 +238,16 @@ impl OpenWindow {
         vibrant: bool,
         moving: bool,
         buffer: (u32, u32),
-    ) -> Vec<Command> {
+    ) -> (Vec<Command>, bool) {
         let Some(kit) = &self.vibrancy_kit else {
-            return commands;
+            return (commands, false);
         };
 
         // a window that stops being vibrant drops its layers, and shows all on itself again
         if !vibrant {
-            self.vibrant_layers = None;
+            let had = self.vibrant_layers.take().is_some();
 
-            return commands;
+            return (commands, had);
         }
 
         let parent = self.role.wl_surface().clone();
@@ -244,14 +260,14 @@ impl OpenWindow {
         let size = (self.width, self.height);
         let whole_scale = self.fractional.is_none().then_some(self.scale as i32);
 
-        layers
+        let lighter = layers
             .lighter
             .draw(split.lighter, size, buffer, whole_scale, moving);
-        layers
+        let darker = layers
             .darker
             .draw(split.darker, size, buffer, whole_scale, moving);
 
-        split.window
+        (split.window, lighter || darker)
     }
 }
 
