@@ -34,8 +34,18 @@ impl Backdrop {
 }
 
 /*
- * a reading from the compositor; one that didn't change redraws nothing,
- * and one that did only the windows that read that shape's
+ * how far a reading has to move from the one readers have before it counts:
+ * niri reports up to 4 times a second per shape, and a video or a scrolling
+ * page behind glass moves it a little each time, while what reads it only
+ * turns at thresholds (with hysteresis); smaller moves would redraw the
+ * window for nothing
+ */
+const STEP: f32 = 0.02;
+
+/*
+ * a reading from the compositor; one that didn't move by STEP is dropped and
+ * redraws nothing, one that did redraws only the windows that read that
+ * shape's
  */
 pub(crate) fn report(id: u32, luminance: f32) {
     let luminance = luminance.clamp(0.0, 1.0);
@@ -44,7 +54,8 @@ pub(crate) fn report(id: u32, luminance: f32) {
     // not a change to every reader of the service
     backdrop.quiet();
 
-    if backdrop.shapes.insert(id, luminance) != Some(luminance) {
+    if moved(backdrop.shapes.get(&id).copied(), luminance) {
+        backdrop.shapes.insert(id, luminance);
         drop(backdrop);
 
         if timing::enabled() {
@@ -52,5 +63,23 @@ pub(crate) fn report(id: u32, luminance: f32) {
         }
 
         changes::mark_source(Source::Backdrop(id));
+    }
+}
+
+// a first reading, or one STEP or more from the last one kept
+fn moved(before: Option<f32>, now: f32) -> bool {
+    before.is_none_or(|before| (now - before).abs() >= STEP)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::moved;
+
+    #[test]
+    fn small_moves_are_dropped() {
+        assert!(moved(None, 0.5));
+        assert!(!moved(Some(0.5), 0.51));
+        assert!(moved(Some(0.5), 0.53));
+        assert!(moved(Some(0.5), 0.47));
     }
 }
