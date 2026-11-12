@@ -56,6 +56,15 @@ static SEARCHING: AtomicBool = AtomicBool::new(false);
 
 static LAST_RESTART: Mutex<Option<Instant>> = Mutex::new(None);
 
+/*
+ * when the search was asked for: one the radio drops after this long isn't
+ * started again, so a search whose stop_scan() never came (a view gone
+ * without leaving) can't keep the radio scanning for good
+ */
+static SEARCH_STARTED: Mutex<Option<Instant>> = Mutex::new(None);
+
+const RESTART_SCAN_FOR: Duration = Duration::from_secs(60);
+
 impl Bluetooth {
     /// Turns on with rfkill unblocked first, like turning it on in airplane mode.
     pub fn set_powered(powered: bool) {
@@ -73,6 +82,7 @@ impl Bluetooth {
     /// New devices show up in devices() while searching, until stop_scan().
     pub fn start_scan() {
         SEARCHING.store(true, Ordering::Relaxed);
+        *lock(&SEARCH_STARTED) = Some(Instant::now());
 
         worker::run(scan);
     }
@@ -372,8 +382,10 @@ fn scan() {
     let _ = adapter_call("StartDiscovery", &[]);
 }
 
+/// A search asked for, recently enough to start again when the radio drops it.
 pub(super) fn searching() -> bool {
     SEARCHING.load(Ordering::Relaxed)
+        && lock(&SEARCH_STARTED).is_some_and(|started| started.elapsed() < RESTART_SCAN_FOR)
 }
 
 // a search the radio dropped, like when it was turned off and on
