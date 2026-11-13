@@ -195,7 +195,10 @@ fn open(instance: &Instance, surface: &Surface) -> Shared {
     #[cfg(feature = "vello-stats")]
     hear_vello();
 
+    // a shell draws little and often: on a laptop with two gpus, the integrated one, so the
+    // discrete gpu isn't kept awake for a bar
     let adapter_options = RequestAdapterOptions {
+        power_preference: vello::wgpu::PowerPreference::LowPower,
         compatible_surface: Some(surface),
         ..RequestAdapterOptions::default()
     };
