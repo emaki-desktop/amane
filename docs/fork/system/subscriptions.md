@@ -63,3 +63,25 @@ there would step from the wrong level.
 - Tests: a subscription that follows another service and ignores a quiet write; an unread
   service that parks until it's read; a service an open window reads that keeps polling and
   stops when the window goes.
+
+## Frozen windows and the screen being off
+
+A frozen window's reads ([`LayerWindow::frozen`](../../../src/layer_window.rs)) only say when to
+thaw it, so they don't keep a polling service watched. Hidden windows' reads still do: a hidden
+window runs its view on a change to see whether it should show, as the shell's on-screen display
+does.
+
+### The screen off: `set_screen_off`
+
+```rust,ignore
+// the shell turning the monitors off for the idle service
+amane::niri::power_off_monitors()?;
+amane::set_screen_off(true);
+```
+
+While the screen is off, windows other than a lock screen's aren't asked to draw, and their reads
+keep no polling service watched (`idle_stop` then parks them). `set_screen_off(false)` ends it,
+and so does the first input by itself: setting it makes a one-second ext-idle-notify timer per
+seat, whose `resumed` clears it. Then every window draws afresh, and the services they read are
+watched again (`WaylandState::update_screen_off`).
+
