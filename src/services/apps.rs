@@ -7,10 +7,10 @@ mod icons;
 mod mime;
 mod parse;
 mod walk;
+pub(crate) mod watch;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::thread;
 use std::time::Duration;
 
 use crate::Service;
@@ -29,9 +29,10 @@ pub struct Apps {
 }
 
 /*
- * the applications folders are looked at every half minute, and scanned again only when one
- * of them changed, so programs installed while the shell runs show up without the scan (which
- * reads every icon theme) running each time
+ * the applications folders are looked at when inotify says one may have changed (a system
+ * switch replacing the links to them included, see watch.rs), and scanned again only when one
+ * did, so programs installed while the shell runs show up without the scan (which reads every
+ * icon theme) running each time; without inotify they're looked at every half minute
  */
 impl Service for Apps {
     // empty at first: the scan walks every icon theme, which takes seconds
@@ -40,20 +41,20 @@ impl Service for Apps {
     }
 
     fn interval() -> Duration {
-        Duration::from_secs(30)
+        watch::POLL
     }
 
     // scanned outside the lock, so a view reading the list never waits on the disk
     fn listen() {
         let mut seen = None;
         loop {
-            let now = fingerprint::Fingerprint::of(
-                data_dirs::find()
-                    .into_iter()
-                    .map(|dir| dir.join("applications")),
-            );
+            let folders: Vec<_> = data_dirs::find()
+                .into_iter()
+                .map(|dir| dir.join("applications"))
+                .collect();
+            let now = fingerprint::Fingerprint::of(&folders);
             if seen.as_ref() == Some(&now) {
-                thread::sleep(Self::interval());
+                watch::wait(&folders);
                 continue;
             }
             seen = Some(now);
@@ -71,7 +72,7 @@ impl Service for Apps {
 
             drop(apps);
 
-            thread::sleep(Self::interval());
+            watch::wait(&folders);
         }
     }
 }

@@ -35,8 +35,9 @@ pub struct MimeApps {
 
 /*
  * the user's own list is watched, so a change from xdg-mime or a settings app shows up at
- * once; the system's lists (and mimeinfo.cache) change with a system switch, so they're only
- * looked at every half minute, and read again when one of them moved
+ * once; the system's lists (and mimeinfo.cache) change with a system switch, so they're looked
+ * at when inotify says one may have (the links to them replaced included, see watch.rs), and
+ * read again when one of them moved
  */
 impl Service for MimeApps {
     fn new() -> Self {
@@ -44,7 +45,7 @@ impl Service for MimeApps {
     }
 
     fn interval() -> Duration {
-        Duration::from_secs(30)
+        super::watch::POLL
     }
 
     fn update(&mut self) -> bool {
@@ -73,7 +74,7 @@ impl Service for MimeApps {
 
         let mut seen = system_fingerprint();
         loop {
-            std::thread::sleep(Self::interval());
+            super::watch::wait(&system_files());
             let now = system_fingerprint();
             if now != seen {
                 seen = now;
@@ -91,10 +92,15 @@ fn reload() {
 }
 
 fn system_fingerprint() -> Fingerprint {
+    Fingerprint::of(system_files())
+}
+
+// the lists and every applications folder's cache
+fn system_files() -> Vec<PathBuf> {
     let caches = data_dirs::find()
         .into_iter()
         .map(|dir| dir.join("applications/mimeinfo.cache"));
-    Fingerprint::of(lists().into_iter().chain(caches))
+    lists().into_iter().chain(caches).collect()
 }
 
 impl MimeApps {
