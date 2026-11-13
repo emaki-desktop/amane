@@ -422,7 +422,9 @@ impl Network {
 
 /*
  * a saved profile already holds its password, so it is joined as it is;
- * otherwise networkmanager saves a new one, password included
+ * otherwise networkmanager saves a new one, password included. a password
+ * given for a saved network replaces the profile: the one it holds was
+ * likely wrong, as networkmanager saves a profile even when joining fails
  */
 fn join(ssid: &str, password: Option<&str>, hidden: bool) -> Result<(), ServiceError> {
     let Some(device) = wifi::device() else {
@@ -430,7 +432,10 @@ fn join(ssid: &str, password: Option<&str>, hidden: bool) -> Result<(), ServiceE
     };
 
     if !hidden && let Some(profile) = profile::find(ssid) {
-        return Ok(manager::activate(&profile, &device)?);
+        let replaced = password.is_some() && profile::delete(&profile);
+        if !replaced {
+            return Ok(manager::activate(&profile, &device)?);
+        }
     }
 
     let settings = profile::settings(ssid, password, hidden);

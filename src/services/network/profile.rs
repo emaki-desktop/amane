@@ -22,6 +22,18 @@ pub fn find(name: &str) -> Option<String> {
     None
 }
 
+// deletes the saved profile at `path`, unless the system's configuration
+// declares it (it would only come back); whether it's gone
+pub fn delete(path: &str) -> bool {
+    let bus = Bus::system();
+    let file = bus.property(NAME, path, CONNECTION, "Filename");
+    if super::details::declared(file.text()) {
+        return false;
+    }
+
+    bus.try_call(NAME, path, CONNECTION, "Delete", &[]).is_ok()
+}
+
 // the names of every network with a saved profile
 pub fn saved_names() -> Vec<String> {
     let mut names = Vec::new();
