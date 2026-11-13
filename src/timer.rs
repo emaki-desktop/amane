@@ -5,21 +5,33 @@
 //! with it). A job that changes what windows show marks it the usual way
 //! ([`mark_all`](crate::mark_all), a service write); [`redraw_after`] does only that.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use smithay_client_toolkit::reexports::calloop::LoopHandle;
 use smithay_client_toolkit::reexports::calloop::channel::{self, Channel, Sender};
 use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer as LoopTimer};
+use smithay_client_toolkit::reexports::calloop::{LoopHandle, RegistrationToken};
 
 type Job = Box<dyn FnOnce() + Send>;
 
 struct Request {
+    id: u64,
     at: Instant,
     job: Job,
     cancelled: Arc<AtomicBool>,
 }
+
+// what the event loop is told: a timer to start, or one to take off the loop again
+enum Message {
+    Start(Request),
+    Cancel(u64),
+}
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Starts jobs on the event loop at their time.
 pub struct Timer;
@@ -27,13 +39,23 @@ pub struct Timer;
 /// A timer that hasn't fired yet can be cancelled. Dropping the handle doesn't cancel it.
 #[derive(Clone)]
 pub struct TimerHandle {
+    id: u64,
     cancelled: Arc<AtomicBool>,
+    // the loop's channel, to take the timer off it: none for one asked before the loop ran
+    loop_: Option<Sender<Message>>,
 }
 
 impl TimerHandle {
-    /// Stops the job from running, if it hasn't yet.
+    /// Stops the job from running, if it hasn't yet, and takes its timer off the event loop,
+    /// so the loop doesn't wake for it.
     pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Relaxed);
+        if self.cancelled.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        if let Some(loop_) = &self.loop_ {
+            // a loop that's gone has nothing to take off
+            let _ = loop_.send(Message::Cancel(self.id));
+        }
     }
 
     /// Whether [`cancel`](Self::cancel) was called.
@@ -73,7 +95,7 @@ struct Queue {
 }
 
 struct Inner {
-    sender: Option<Sender<Request>>,
+    sender: Option<Sender<Message>>,
     early: Vec<Request>,
 }
 
@@ -88,17 +110,20 @@ impl Queue {
     }
 
     fn schedule(&self, at: Instant, job: Job) -> TimerHandle {
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let cancelled = Arc::new(AtomicBool::new(false));
         let request = Request {
+            id,
             at,
             job,
             cancelled: Arc::clone(&cancelled),
         };
 
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let loop_ = inner.sender.clone();
         match &inner.sender {
             Some(sender) => {
-                if let Err(err) = sender.send(request) {
+                if let Err(err) = sender.send(Message::Start(request)) {
                     // the event loop is gone; nothing would run it anyway
                     drop(err);
                 }
@@ -106,18 +131,33 @@ impl Queue {
             None => inner.early.push(request),
         }
 
-        TimerHandle { cancelled }
+        TimerHandle {
+            id,
+            cancelled,
+            loop_,
+        }
     }
 
     fn attach<D: 'static>(&self, handle: &LoopHandle<'static, D>) {
-        let (sender, channel): (Sender<Request>, Channel<Request>) = channel::channel();
+        let (sender, channel): (Sender<Message>, Channel<Message>) = channel::channel();
+
+        // the timers on the loop now, by id, so a cancel can take one off
+        let running: Running = Rc::default();
 
         let timers = handle.clone();
+        let on_loop = Rc::clone(&running);
         let inserted = handle.insert_source(channel, move |event, _, _| {
-            let channel::Event::Msg(request) = event else {
+            let channel::Event::Msg(message) = event else {
                 return;
             };
-            start(&timers, request);
+            match message {
+                Message::Start(request) => start(&timers, &on_loop, request),
+                Message::Cancel(id) => {
+                    if let Some(token) = on_loop.borrow_mut().remove(&id) {
+                        timers.remove(token);
+                    }
+                }
+            }
         });
         if let Err(err) = inserted {
             eprintln!("amane: failed to start timers: {err}");
@@ -126,17 +166,30 @@ impl Queue {
 
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         for request in inner.early.drain(..) {
-            start(handle, request);
+            start(handle, &running, request);
         }
         inner.sender = Some(sender);
     }
 }
 
-fn start<D: 'static>(handle: &LoopHandle<'static, D>, request: Request) {
-    let Request { at, job, cancelled } = request;
+type Running = Rc<RefCell<HashMap<u64, RegistrationToken>>>;
+
+fn start<D: 'static>(handle: &LoopHandle<'static, D>, running: &Running, request: Request) {
+    let Request {
+        id,
+        at,
+        job,
+        cancelled,
+    } = request;
+    // cancelled before the loop ran: never put on it
+    if cancelled.load(Ordering::Relaxed) {
+        return;
+    }
     let mut job = Some(job);
 
+    let fired = Rc::clone(running);
     let inserted = handle.insert_source(LoopTimer::from_deadline(at), move |_, _, _| {
+        fired.borrow_mut().remove(&id);
         if !cancelled.load(Ordering::Relaxed)
             && let Some(job) = job.take()
         {
@@ -144,8 +197,11 @@ fn start<D: 'static>(handle: &LoopHandle<'static, D>, request: Request) {
         }
         TimeoutAction::Drop
     });
-    if let Err(err) = inserted {
-        eprintln!("amane: failed to start a timer: {err}");
+    match inserted {
+        Ok(token) => {
+            running.borrow_mut().insert(id, token);
+        }
+        Err(err) => eprintln!("amane: failed to start a timer: {err}"),
     }
 }
 
@@ -223,6 +279,30 @@ mod tests {
             handle.cancel();
             assert!(handle.is_cancelled());
             queue.schedule(now + Duration::from_millis(30), Box::new(report(2)));
+        });
+        let order: Vec<u32> = ran.iter().map(|(id, _)| *id).collect();
+        assert_eq!(order, [2]);
+    }
+
+    #[test]
+    fn a_job_cancelled_on_the_loop_is_taken_off_it() {
+        static LATE: Queue = Queue::new();
+        let ran = run(&LATE, 1, |queue| {
+            queue.schedule(
+                Instant::now(),
+                Box::new(|| {
+                    // asked and cancelled once the loop runs: the cancel goes through the loop
+                    let handle = LATE.schedule(
+                        Instant::now() + Duration::from_millis(20),
+                        Box::new(report(1)),
+                    );
+                    handle.cancel();
+                    LATE.schedule(
+                        Instant::now() + Duration::from_millis(40),
+                        Box::new(report(2)),
+                    );
+                }),
+            );
         });
         let order: Vec<u32> = ran.iter().map(|(id, _)| *id).collect();
         assert_eq!(order, [2]);
