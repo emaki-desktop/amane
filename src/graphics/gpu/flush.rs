@@ -79,6 +79,7 @@ impl Gpu {
 
         self.vello_used.set(std::time::Instant::now());
         self.vello_released.set(false);
+        super::shared::vello_ran();
 
         self.keep_atlas(scene);
 

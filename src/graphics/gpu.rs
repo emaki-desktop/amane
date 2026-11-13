@@ -51,7 +51,7 @@ use crate::graphics::renderer::Command;
 
 use pass::Pass;
 use shared::Shared;
-pub(crate) use shared::{VELLO_IDLE, release_idle_scratch};
+pub(crate) use shared::{VELLO_IDLE, on_vello_run, release_idle_scratch};
 pub(crate) use window_gpu::WindowGpu;
 
 // AMANE_KEEP_HIDDEN=1 keeps a hidden window's gpu memory, as before the release on hide

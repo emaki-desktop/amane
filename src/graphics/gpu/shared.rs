@@ -58,19 +58,41 @@ pub static VELLO_IDLE: LazyLock<Option<Duration>> = LazyLock::new(|| {
     (seconds > 0).then(|| Duration::from_secs(seconds))
 });
 
-// drops vello's scratch if nothing drew through it for the idle time; the timer calls this
-pub fn release_idle_scratch() {
+thread_local! {
+    // the event loop's, to arm the idle timer when vello runs (wayland::idle_gpu)
+    static ON_VELLO_RUN: std::cell::Cell<Option<fn()>> = const { std::cell::Cell::new(None) };
+}
+
+// called each time vello runs: the event loop arms its idle timer then
+pub fn on_vello_run(arm: fn()) {
+    ON_VELLO_RUN.set(Some(arm));
+}
+
+pub(super) fn vello_ran() {
+    if let Some(arm) = ON_VELLO_RUN.get() {
+        arm();
+    }
+}
+
+/*
+ * drops vello's scratch if nothing drew through it for the idle time; the timer calls this,
+ * and true means scratch is still held, so it has to look again
+ */
+pub fn release_idle_scratch() -> bool {
     let Some(idle) = *VELLO_IDLE else {
-        return;
+        return false;
     };
 
     SHARED.with_borrow(|shared| {
         let Some(shared) = shared else {
-            return;
+            return false;
         };
 
-        if shared.vello_released.get() || shared.vello_used.get().elapsed() < idle {
-            return;
+        if shared.vello_released.get() {
+            return false;
+        }
+        if shared.vello_used.get().elapsed() < idle {
+            return true;
         }
 
         shared.vello.borrow_mut().release_scratch();
@@ -87,7 +109,9 @@ pub fn release_idle_scratch() {
         if crate::timing::enabled() {
             eprintln!("released vello's scratch after {:?} idle", idle);
         }
-    });
+
+        false
+    })
 }
 
 /*
