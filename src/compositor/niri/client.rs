@@ -389,6 +389,11 @@ pub fn power_off_monitors() -> Result<(), NiriError> {
     act(json!({ "PowerOffMonitors": {} }))
 }
 
+/// Turns the monitors on again, as the next input would.
+pub fn power_on_monitors() -> Result<(), NiriError> {
+    act(json!({ "PowerOnMonitors": {} }))
+}
+
 /// Ends the session, without asking.
 pub fn quit() -> Result<(), NiriError> {
     act(json!({ "Quit": { "skip_confirmation": true } }))
