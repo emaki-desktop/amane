@@ -28,6 +28,10 @@ const SETTLE: Duration = Duration::from_millis(250);
 const BURST: Duration = Duration::from_secs(1);
 // a refetch without a signal, in case one went missing, only while something watches
 const RESYNC: Duration = Duration::from_secs(60);
+// how long the loop waits for a signal while nothing watches: it still handles signals (for
+// subscribers), and looks again this often whether it's watched again, so a resync isn't late
+// by more than this once a window reads Network again
+const UNWATCHED_WAIT: Duration = Duration::from_secs(600);
 // strength and scan noise from networks not joined is read only while the list of networks was
 // read this recently, by a window that shows it
 const LISTED_FOR: Duration = Duration::from_secs(30);
@@ -122,7 +126,12 @@ impl Service for Network {
         loop {
             // Some(settings too) once a full read is due
             let mut wanted = None;
-            match signals.recv_timeout(RESYNC) {
+            let wait = if store::unwatched::<Self>(IDLE_STOP) {
+                UNWATCHED_WAIT
+            } else {
+                RESYNC
+            };
+            match signals.recv_timeout(wait) {
                 Ok(change) => take(change, &mut wanted),
                 Err(RecvTimeoutError::Timeout) => {
                     if store::unwatched::<Self>(IDLE_STOP) {
