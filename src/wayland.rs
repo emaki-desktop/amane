@@ -150,6 +150,9 @@ struct WaylandState {
     idle_notifier: Option<ExtIdleNotifierV1>,
     idle_notifications: Vec<ExtIdleNotificationV1>,
 
+    // says when input comes while the screen is off (screen_off), empty while it's on
+    screen_off_watch: Vec<ExtIdleNotificationV1>,
+
     /*
      * the lock screen's view, what asks the compositor for a lock (kept, so
      * the session can be locked again), and the lock while the session is locked
@@ -351,6 +354,7 @@ impl WaylandApp {
 
             idle_notifier,
             idle_notifications: Vec::new(),
+            screen_off_watch: Vec::new(),
 
             lock_view,
             lock_state: None,

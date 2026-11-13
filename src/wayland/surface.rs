@@ -69,6 +69,9 @@ pub struct OpenWindow {
     // the services the last view read, a change to any of them draws the window again
     pub reads: HashSet<Source>,
 
+    // the last view froze it (LayerWindow::frozen): its reads keep no polling service going
+    pub frozen: bool,
+
     // both come from the last drawn view, so input matches what is on screen
     pub pointer: Pointer,
     pub keys: KeyHandlers,
@@ -198,6 +201,11 @@ impl OpenWindow {
         };
 
         self.redraw();
+    }
+
+    // a lock screen's surface, which draws even with the screen off (screen_off)
+    pub fn is_lock(&self) -> bool {
+        matches!(self.role, Role::Lock(_))
     }
 
     fn asked_size(&self) -> (u32, u32) {

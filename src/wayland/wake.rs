@@ -15,6 +15,8 @@ pub fn insert(handle: &LoopHandle<'static, WaylandState>) {
 
             state.update_idle_if_asked();
 
+            state.update_screen_off();
+
             state.handle_window_requests();
 
             state.handle_popup_requests();

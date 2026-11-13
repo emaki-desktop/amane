@@ -87,6 +87,7 @@ impl WaylandState {
             frame_requested: false,
             last_frame: None,
             reads: HashSet::new(),
+            frozen: false,
 
             pointer: Pointer::default(),
             keys: KeyHandlers::default(),
@@ -121,7 +122,14 @@ impl WaylandState {
 
     // a service or handler may have changed what any of the windows shows
     pub fn request_frames(&mut self) {
+        let off = crate::screen_off::screen_off();
+
         for window in &mut self.windows {
+            // with the screen off only a lock screen draws; the rest do on waking
+            if off && !window.is_lock() {
+                continue;
+            }
+
             window.request_frame();
         }
     }
@@ -138,9 +146,16 @@ impl WaylandState {
      * polling while one is open, and stops when none is (services::store)
      */
     pub fn publish_watched(&self) {
+        /*
+         * a frozen window's reads are only what thaws it, and with the screen off only a lock
+         * screen is seen: neither keeps a polling service going (hidden windows still do, as
+         * they run their view on a change to see whether to show)
+         */
+        let off = crate::screen_off::screen_off();
         let read: std::collections::HashSet<changes::Source> = self
             .windows
             .iter()
+            .filter(|window| !window.frozen && (!off || window.is_lock()))
             .flat_map(|window| window.reads.iter().copied())
             .collect();
 
@@ -164,8 +179,10 @@ impl WaylandState {
             return;
         };
 
+        let off = crate::screen_off::screen_off();
+
         for window in &mut self.windows {
-            if window.reads.is_disjoint(&changed) {
+            if window.reads.is_disjoint(&changed) || (off && !window.is_lock()) {
                 continue;
             }
 

@@ -34,7 +34,8 @@ impl OpenWindow {
         self.reads = reads;
 
         // a frozen window that shows keeps its last frame, with what was sent with it
-        if content.frozen() && self.width != 0 && self.height != 0 {
+        self.frozen = content.frozen() && self.width != 0 && self.height != 0;
+        if self.frozen {
             return;
         }
 

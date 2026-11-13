@@ -53,6 +53,57 @@ impl WaylandState {
     }
 }
 
+/// The user data of the timer that ends screen_off at the first input.
+pub struct ScreenOffWatch;
+
+impl WaylandState {
+    /*
+     * the screen went off or on again (screen_off::set_screen_off): off, a one-second idle
+     * timer per seat says when input comes; on, every window draws afresh. Either way the
+     * watched services follow at once
+     */
+    pub fn update_screen_off(&mut self) {
+        if !crate::screen_off::take_change() {
+            return;
+        }
+
+        for watch in self.screen_off_watch.drain(..) {
+            watch.destroy();
+        }
+
+        if crate::screen_off::screen_off() {
+            if let Some(notifier) = &self.idle_notifier {
+                for seat in self.seat.seats() {
+                    let watch =
+                        notifier.get_idle_notification(1000, &seat, &self.qh, ScreenOffWatch);
+
+                    self.screen_off_watch.push(watch);
+                }
+            }
+        } else {
+            self.request_frames();
+        }
+
+        self.publish_watched();
+    }
+}
+
+impl Dispatch<ExtIdleNotificationV1, ScreenOffWatch> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &ExtIdleNotificationV1,
+        event: ext_idle_notification_v1::Event,
+        _: &ScreenOffWatch,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // idled comes a second after it's made (nothing moved); resumed is the first input
+        if let ext_idle_notification_v1::Event::Resumed = event {
+            crate::screen_off::set_screen_off(false);
+        }
+    }
+}
+
 impl Dispatch<ExtIdleNotificationV1, Duration> for WaylandState {
     fn event(
         _: &mut Self,

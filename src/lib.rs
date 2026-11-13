@@ -30,6 +30,7 @@ mod popup;
 mod portal;
 mod process;
 mod scale;
+mod screen_off;
 mod services;
 mod style;
 mod timer;
@@ -79,6 +80,7 @@ pub use popup::{
     Anchor as PopupAnchor, AnchorRect, ConstraintAdjustment, Gravity, Popup, open_popup,
 };
 pub use process::{lines, output, spawn, spawn_activated};
+pub use screen_off::{screen_off, set_screen_off};
 pub use serde;
 pub use services::MimeApps;
 #[cfg(feature = "polkit-agent")]

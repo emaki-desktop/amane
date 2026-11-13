@@ -369,6 +369,7 @@ impl WaylandState {
             frame_requested: false,
             last_frame: None,
             reads: HashSet::new(),
+            frozen: false,
 
             pointer: Pointer::default(),
             keys: KeyHandlers::default(),
