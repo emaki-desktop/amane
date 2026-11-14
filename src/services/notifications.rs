@@ -5,6 +5,7 @@ mod server;
 
 pub use kept::Kept;
 pub use notification::{Action, Notification, Timeout, Urgency};
+pub(crate) use server::{DEFAULT_ACTION, find_icon};
 
 use crate::Service;
 
@@ -131,11 +132,24 @@ impl Notifications {
 
         let resident = notification.resident;
 
-        server::announce_action(id, key);
+        // one this program sent runs its own callback; anyone else hears it on the bus
+        if !crate::notify::run_callback(id, key) {
+            server::announce_action(id, key);
+        }
 
         if !resident {
             self.close(id, Reason::Dismissed);
         }
+    }
+
+    // one this program sent itself, see Notify::send; gives its id
+    pub(crate) fn add_sent(&mut self, notification: Notification, replaces_id: u32) -> u32 {
+        self.add(notification, replaces_id)
+    }
+
+    // this program takes down one it sent, see Handle::close
+    pub(crate) fn close_sent(id: u32) {
+        Self::write().close(id, Reason::Closed);
     }
 
     // a sender may replace its own earlier notification, which keeps its id and place
@@ -195,6 +209,7 @@ impl Notifications {
         let closed = self.list.remove(index);
 
         image_hint::remove(&closed.image);
+        crate::notify::forget(id);
 
         // nobody in this session sent a restored one, so nobody is told
         if !closed.restored {

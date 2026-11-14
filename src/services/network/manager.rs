@@ -35,6 +35,15 @@ pub fn wifi_enabled() -> bool {
         .bool()
 }
 
+// a captive portal: networkmanager's connectivity check was answered by a sign-in page
+pub fn behind_portal() -> bool {
+    const PORTAL: f64 = 2.0;
+    Bus::system()
+        .property(NAME, PATH, NAME, "Connectivity")
+        .number()
+        == PORTAL
+}
+
 pub fn set_wifi(enabled: bool) {
     Bus::system().set_property(NAME, PATH, NAME, "WirelessEnabled", Argument::from(enabled));
 }

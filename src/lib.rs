@@ -44,7 +44,7 @@ pub use animation::{Animation, Blend, Easing, request_frame};
 pub use changes::mark_all;
 pub use clipboard::{Clipboard, DragData, PrimarySelection};
 pub use config::{Config, Settings};
-pub use notify::Notify;
+pub use notify::{Handle as NotifyHandle, Notify};
 pub use portal::FileDialog;
 pub use timer::{Timer, TimerHandle, redraw_after};
 pub use timing::{FrameStats, frame_stats};
@@ -85,19 +85,21 @@ pub use serde;
 pub use services::MimeApps;
 #[cfg(feature = "polkit-agent")]
 pub use services::PolkitAgent;
+pub use services::uevent::{Uevent as DeviceEvent, listen as device_events};
 pub use services::worker::run as run_in_order;
 pub use services::{
     AccessPoint, Action, Appearance, Apps, Audio, AudioDevice, AudioKind, AudioLevel, AudioStream,
     AuthPrompt, AuthRequest, Backdrop, Battery, BatteryState, Bluetooth, BluetoothAdapter,
     BluetoothDevice, BluetoothOperation, Brightness, Casts, ClipboardWatcher, ConnectionDetails,
-    Cpu, Desktop, DesktopAction, DesktopApp, DeviceKind, FieldOwner, FillError, FocusedField,
-    Gestures, Hints as FieldHints, Idle, Ipv4Settings, Kept as KeptNotification, KeyboardLayouts,
-    Link, Lock, LockKeys, Logind, Media, MediaPlayer, Memory, Network, NetworkOperation,
-    NetworkProfile, Notification, Notifications, Outputs, Overview, PairingAnswer, PairingKind,
-    PairingRequest, Palette, Pam, PamConfig, PamError, PamMessage, PamMessageKind, PamResult,
-    Polkit, PowerDevice, PowerProfile, PowerState, Purpose as FieldPurpose, Radio, Rfkill, Scheme,
-    Service, Subscription, Timeout, Tray, TrayItem, TrayMenuItem, TrayStatus, TrayToggle, Urgency,
-    WarningLevel, WindowInfo, Windows, Wired, Workspace, WorkspaceSwitch, Workspaces,
+    Cpu, Desktop, DesktopAction, DesktopApp, DeviceKind, Disks, FieldOwner, FillError,
+    FocusedField, Gestures, Hints as FieldHints, Idle, Ipv4Settings, Kept as KeptNotification,
+    KeyboardLayouts, Link, Lock, LockKeys, Logind, Media, MediaPlayer, Memory, Network,
+    NetworkOperation, NetworkProfile, Notification, Notifications, Outputs, Overview,
+    PairingAnswer, PairingKind, PairingRequest, Palette, Pam, PamConfig, PamError, PamMessage,
+    PamMessageKind, PamResult, Polkit, PowerDevice, PowerProfile, PowerState,
+    Purpose as FieldPurpose, Radio, Rfkill, Scheme, Service, Subscription, Timeout, Tray, TrayItem,
+    TrayMenuItem, TrayStatus, TrayToggle, Urgency, Volume, WarningLevel, WindowInfo, Windows,
+    Wired, Workspace, WorkspaceSwitch, Workspaces,
 };
 pub use services::{ErrorKind, IDLE_STOP, ServiceError, kind_of_bus};
 pub use style::{Effect, Fill, Image, Input, Mask, Radius, Shadow};

@@ -125,6 +125,11 @@ pub enum Event {
     CastStopped {
         stream_id: u64,
     },
+
+    // a screenshot was taken; its file, unless it was only copied
+    ScreenshotCaptured {
+        path: Option<String>,
+    },
 }
 
 // niri's events only say what changed, so the rest is remembered here
@@ -228,6 +233,9 @@ fn parse(line: &str) -> Option<Event> {
             num_lock: body["num_lock"].as_bool()?,
         }),
         "OutputsChanged" => Some(Event::OutputsChanged),
+        "ScreenshotCaptured" => Some(Event::ScreenshotCaptured {
+            path: body["path"].as_str().map(String::from),
+        }),
         "ConfigLoaded" => Some(Event::ConfigLoaded {
             failed: body["failed"].as_bool()?,
         }),
@@ -347,6 +355,7 @@ impl State {
             | Event::LockKeys { .. }
             | Event::OutputsChanged
             | Event::ConfigLoaded { .. }
+            | Event::ScreenshotCaptured { .. }
             | Event::Casts(_)
             | Event::CastChanged(_)
             | Event::CastStopped { .. }
@@ -470,6 +479,14 @@ mod tests {
         assert!(matches!(
             parse(r#"{"ConfigLoaded":{"failed":true}}"#),
             Some(Event::ConfigLoaded { failed: true })
+        ));
+        assert!(matches!(
+            parse(r#"{"ScreenshotCaptured":{"path":"/home/me/Pictures/shot.png"}}"#),
+            Some(Event::ScreenshotCaptured { path: Some(path) }) if path.ends_with("shot.png")
+        ));
+        assert!(matches!(
+            parse(r#"{"ScreenshotCaptured":{"path":null}}"#),
+            Some(Event::ScreenshotCaptured { path: None })
         ));
 
         // events amane doesn't use are skipped

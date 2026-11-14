@@ -494,6 +494,18 @@ pub fn follow_config_loads(mut on_load: impl FnMut(bool)) {
     }
 }
 
+/// Calls `on_capture` each time niri takes a screenshot, with the file it saved, or `None` when
+/// it was only copied, until niri exits. It blocks, so run it on a thread of its own.
+pub fn follow_screenshots(mut on_capture: impl FnMut(Option<String>)) {
+    let wants: super::stream::Wants =
+        |event| matches!(event, super::Event::ScreenshotCaptured { .. });
+    for event in super::stream::subscribe(wants) {
+        if let super::Event::ScreenshotCaptured { path } = event {
+            on_capture(path);
+        }
+    }
+}
+
 /// Stops a screencast.
 pub fn stop_cast(session_id: u64) -> Result<(), NiriError> {
     act(json!({ "StopCast": { "session_id": session_id } }))

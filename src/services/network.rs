@@ -73,6 +73,9 @@ pub struct Network {
 
     // why the last try failed, by network name, profile UUID or interface, until the next try
     failures: BTreeMap<String, ServiceError>,
+
+    // the network answers with a sign-in page, so it needs a login before anything works
+    portal: bool,
 }
 
 /// What a network is in the middle of.
@@ -253,6 +256,7 @@ impl Network {
             && self.profiles == other.profiles
             && self.wired == other.wired
             && self.joined == other.joined
+            && self.portal == other.portal
     }
 
     pub fn connected(&self) -> bool {
@@ -289,6 +293,19 @@ impl Network {
     /// failed, until the next try. The UI words it and decides how long it shows.
     pub fn failure(&self, key: &str) -> Option<&ServiceError> {
         self.failures.get(key)
+    }
+
+    /// Every failure kept, by the network name, profile UUID or interface it's for.
+    pub fn failures(&self) -> impl Iterator<Item = (&str, &ServiceError)> {
+        self.failures
+            .iter()
+            .map(|(key, failure)| (key.as_str(), failure))
+    }
+
+    /// The network is up but answers with a sign-in page (a captive portal), when
+    /// NetworkManager's connectivity check is turned on.
+    pub fn behind_portal(&self) -> bool {
+        self.portal
     }
 
     pub fn access_points(&self) -> &[AccessPoint] {
@@ -502,6 +519,8 @@ fn fetch(saved: &[connections::Saved]) -> Network {
     if !manager::connected() {
         return network;
     }
+
+    network.portal = manager::behind_portal();
 
     let connection = manager::primary_connection();
 

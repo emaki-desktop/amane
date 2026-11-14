@@ -16,7 +16,7 @@ use std::thread;
 
 /// One device event.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Uevent {
+pub struct Uevent {
     /// `add`, `remove`, `change`, `move`, `online`, `offline`, `bind` or `unbind`.
     pub action: String,
     /// The device's path under `/sys`, like `/devices/…/backlight/amdgpu_bl1`.
@@ -47,7 +47,7 @@ struct Hub {
 
 /// The events for `subsystem` from now on. `None` when the kernel's events can't be read, so
 /// the caller keeps polling.
-pub(crate) fn listen(subsystem: &'static str) -> Option<Receiver<Uevent>> {
+pub fn listen(subsystem: &'static str) -> Option<Receiver<Uevent>> {
     let mut hub = HUB.lock().unwrap_or_else(PoisonError::into_inner);
 
     if hub.state == Started::No {
