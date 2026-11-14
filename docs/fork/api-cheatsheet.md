@@ -19,7 +19,8 @@ changes. Each section matches a section there.
 | `Rectangle::on_text_drop(handler)` / `.drag_out(data)` | text dragged in; dragging `DragData` out |
 | `Config::<T>::read()` / `::change(edit)` | a settings file in `~/.config`, shared live between programs |
 | `FileDialog::open(title)...show(then)` | the desktop's file dialog through the portal |
-| `Notify::new(summary).body(..).send()` | sends a desktop notification |
+| `Notify::new(summary).body(..).send()` | sends a desktop notification; also `.icon(..)`, `.image(..)`, `.urgency(..)`, `.transient(..)`, `.resident(..)`, `.category(..)`, `.desktop_entry(..)`, `.timeout(..)`, `.replaces(&handle)`, `.action(key, label, Fn)`, `.on_click(Fn)`; returns a `NotifyHandle` whose `close()` takes it down |
+| `device_events(subsystem)` | kernel uevents for a subsystem (`"usb"`, `"power_supply"`, …) as a `Receiver<DeviceEvent>`, or `None` without the socket |
 | `click_count()` | 1, 2 or 3 for the click being handled |
 | `.on_close(handler)` | asked when the user closes it, `Fn() -> bool`; `false` keeps it open |
 | `open_window_with(name, closure)` | `open_window` with a view that carries its own data |

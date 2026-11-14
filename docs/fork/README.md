@@ -55,7 +55,9 @@ fork](#maintaining-the-fork) is for whoever rebases it onto upstream.
 | Polkit agent | the session's authentication agent: polkit's prompts as the shell's own; `polkit-agent` feature | `Polkit::serve_agent`, `serve_agent_with`, `AuthRequest` | [polkit](system/polkit.md) | — | done |
 | Appearance | color scheme, accent, contrast, reduced motion | `Appearance`, `Scheme` | [appearance](system/appearance.md) | `examples/appearance.rs` | done |
 | Audio | device lists, kinds, default switching, app streams, balance, input level | `AudioDevice`, `AudioKind`, `AudioStream`, `AudioLevel` | [audio](system/audio.md) | `examples/audio.rs` | done |
-| Notifications | timeout, hints, icon path, expire | `Timeout`, `Notifications::expire` | [notifications](system/notifications.md) | `examples/notifications.rs` | done |
+| Notifications | timeout, hints, icon path, expire; `Notify` with transient, category, desktop-entry, timeout, replaces, actions with closures and a handle to close later | `Timeout`, `Notifications::expire`, `Notify`, `NotifyHandle` | [notifications](system/notifications.md) | `examples/notifications.rs` | done |
+| Removable drives | UDisks2 as a service: every removable filesystem, mount, unmount and eject | `Disks`, `Volume` | [disks](system/disks.md) | — | done |
+| Kernel device events | one netlink socket, listeners per subsystem, kernel group 1 (no udev needed) | `device_events`, `DeviceEvent` | [uevents](system/uevents.md) | — | done |
 | Apps and processes | desktop entry id, categories, actions, MIME, opening files | `DesktopApp`, `DesktopAction` | [apps-and-processes](system/apps-and-processes.md) | `examples/apps.rs` | done |
 | Radios | rfkill switches from `/dev/rfkill`, airplane mode, blocking | `Rfkill`, `Radio` | [rfkill](system/rfkill.md) | — | done |
 | Session | logind: active, locked and idle hints, lock requests, sleep, inhibitors | `Logind` | [logind](system/logind.md) | — | done |
@@ -90,7 +92,8 @@ fork](#maintaining-the-fork) is for whoever rebases it onto upstream.
   [notifications](system/notifications.md), [apps-and-processes](system/apps-and-processes.md),
   [ipc](system/ipc.md), [rfkill](system/rfkill.md), [logind](system/logind.md),
   [clipboard-watcher](system/clipboard-watcher.md), [network](system/network.md),
-  [lock-keys](system/lock-keys.md), [media](system/media.md), [errors](system/errors.md).
+  [lock-keys](system/lock-keys.md), [media](system/media.md), [errors](system/errors.md),
+  [disks](system/disks.md), [uevents](system/uevents.md).
 - **Internals:** how the fork changes amane inside, and the resource plan.
   [architecture](internals/architecture.md) (sources, `on_track`, frame skip, GPU bounds, frozen
   windows), [memory](internals/memory.md) (what a process holds in GPU memory and RAM, the vello

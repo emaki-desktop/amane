@@ -27,6 +27,60 @@ for notification in notifications.list() {
 Notifications::expire(id);
 ```
 
+### `Notify`: the fork's sender
+
+```rust
+use amane::{Notify, Urgency};
+use std::time::Duration;
+
+let shown = Notify::new("Ejecting SanDisk…")
+    .icon("media-eject")
+    .category("device")
+    .desktop_entry("emaki-drives")
+    .transient(true)
+    .resident(true)
+    .send();
+
+// later, once ejection finished: replace it in place
+let _ = Notify::new("Safe to Remove SanDisk")
+    .icon("media-eject")
+    .desktop_entry("emaki-drives")
+    .transient(true)
+    .replaces(&shown)
+    .send();
+
+// a button that runs a closure instead of emitting an ActionInvoked signal to nobody
+let handle = Notify::new("Battery Low")
+    .body("15 % left")
+    .icon("battery-low")
+    .urgency(Urgency::Critical)
+    .desktop_entry("emaki-power")
+    .timeout(Duration::ZERO) // never: until acted on
+    .action("saver", "Turn On Power Saver", || amane::PowerProfile::set("power-saver"))
+    .send();
+
+// the sender taking it down
+handle.close();
+```
+
+| Setter | Does |
+| --- | --- |
+| `.icon(name)` | a theme icon name or a file path |
+| `.image(path)` | the picture of a file this notification is about, shown on the card |
+| `.urgency(level)` | low, normal (default) or critical |
+| `.transient(true)` | tells the server to leave it out of a history once shown |
+| `.resident(true)` | stays open after a button is pressed, until dismissed or replaced |
+| `.category(kind)` | the kind of event, like `"device.added"` |
+| `.desktop_entry(name)` | the sender's desktop file id, like `"emaki-drives"`; a shell groups and mutes by it |
+| `.timeout(duration)` | how long it shows; `Duration::ZERO` keeps it until it's acted on |
+| `.replaces(&handle)` | takes the place of an earlier one, keeping its spot |
+| `.action(key, label, Fn)` | a button that runs the closure when pressed (locally when this process is the notification server, else over the bus as `ActionInvoked`) |
+| `.on_click(Fn)` | what clicking the notification itself does, in place of dismissing it |
+| `.send()` | gives a `NotifyHandle`; its `id()` is 0 until the server answers, and its `close()` takes the notification down |
+
+The callbacks run on amane's worker thread, so the caller's locks are let go first. They're
+dropped when the notification is closed, replaced or expired.
+
 | Function | Gives |
 | --- | --- |
 | `timeout()` | `Timeout::Default` (the sender left it to the shell), `Timeout::Never`, or `Timeout::After(duration)` |
